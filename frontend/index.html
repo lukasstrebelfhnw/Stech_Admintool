@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+  <meta charset="utf-8" />
+  <title>STech Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b1120;
+      color: #e5e7eb;
+    }
+
+    header {
+      padding: 12px 16px;
+      background: #111827;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+
+    .small {
+      font-size: 11px;
+      color: #6b7280;
+    }
+
+    /* Tabs */
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 8px 16px 0 16px;
+      background: #020617;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .tab-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: #020617;
+      color: #9ca3af;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: #1f2937;
+      color: #e5e7eb;
+      border-color: #2563eb;
+    }
+
+    .tab-content {
+      display: none;
+      padding: 16px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .container {
+      display: flex;
+      gap: 16px;
+    }
+
+    .panel {
+      flex: 1;
+      background: #111827;
+      border-radius: 8px;
+      padding: 12px 14px;
+      border: 1px solid #1f2937;
+      display: flex;
+      flex-direction: column;
+      min-height: 300px;
+    }
+
+    .panel h2 {
+      font-size: 16px;
+      margin: 0 0 8px 0;
+    }
+
+    .panel h3 {
+      font-size: 14px;
+      margin: 8px 0 4px 0;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .form-row input,
+    .form-row select {
+      flex: 1;
+      min-width: 120px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 13px;
+    }
+
+    button {
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: none;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+
+    .list {
+      margin-top: 8px;
+      border-top: 1px solid #1f2937;
+      padding-top: 8px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .item {
+      padding: 6px 4px;
+      border-bottom: 1px solid #1f2937;
+      font-size: 14px;
+    }
+
+    .item-title {
+      font-weight: 600;
+    }
+
+    .item-sub {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .status {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #1f2937;
+      margin-left: 4px;
+    }
+
+    .error {
+      color: #f97373;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .panel-sub {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #1f2937;
+    }
+
+    .small-list {
+      max-height: 200px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #1f2937;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>STech Admin</h1>
+    <div class="small" id="api-status">Backend: unbekannt…</div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="kp">Kunden & Projekte</button>
+    <button class="tab-btn" data-tab="time">Zeiterfassung</button>
+  </nav>
+
+  <!-- TAB 1: Kunden & Projekte -->
+  <div id="tab-kp" class="tab-content active">
+    <div class="container">
+      <!-- Kunden -->
+      <section class="panel">
+        <h2>Kunden</h2>
+
+        <div class="form-row">
+          <input id="customer-firma" placeholder="Firma" />
+          <input id="customer-kontakt" placeholder="Kontaktperson (optional)" />
+          <button id="btn-create-customer">Kunde anlegen</button>
+        </div>
+        <div class="toolbar">
+          <button id="btn-reload-customers">Neu laden</button>
+          <span class="small" id="customer-count"></span>
+        </div>
+        <div id="customer-error" class="error"></div>
+
+        <div id="customer-list" class="list"></div>
+      </section>
+
+      <!-- Projekte -->
+      <section class="panel">
+        <h2>Projekte</h2>
+
+        <div class="form-row">
+          <input id="project-customer-id" placeholder="Kunden-ID" />
+          <input id="project-title" placeholder="Projekttitel" />
+          <button id="btn-create-project">Projekt anlegen</button>
+        </div>
+        <div class="toolbar">
+          <button id="btn-reload-projects">Neu laden</button>
+          <span class="small" id="project-count"></span>
+        </div>
+        <div id="project-error" class="error"></div>
+
+        <div id="project-list" class="list"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- TAB 2: Zeiterfassung -->
+  <div id="tab-time" class="tab-content">
+    <section class="panel">
+      <h2>Zeiterfassung / Stempeln</h2>
+
+      <!-- Stempel-Formular -->
+      <h3>Neuen Zeit-Eintrag buchen</h3>
+      <div class="form-row">
+        <select id="time-employee">
+          <option value="">Mitarbeiter wählen…</option>
+        </select>
+        <select id="time-activity">
+          <option value="">Tätigkeit wählen…</option>
+          <option value="Konstruktion">Konstruktion</option>
+          <option value="Projektleitung">Projektleitung</option>
+          <option value="Inbetriebnahme">Inbetriebnahme</option>
+          <option value="Service">Service</option>
+          <option value="Support">Support</option>
+          <option value="Fahrtzeit">Fahrtzeit</option>
+          <option value="Meeting">Meeting</option>
+          <option value="Administration">Administration</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <input id="time-date" type="date" />
+        <input id="time-start" type="time" placeholder="Start" />
+        <input id="time-end" type="time" placeholder="Ende" />
+        <input id="time-pause" type="number" placeholder="Pause [min]" />
+        <input id="time-hours" type="number" step="0.01" placeholder="Dauer [h]" />
+      </div>
+
+      <div class="form-row">
+        <input id="time-project-id" placeholder="Projekt-ID (optional)" />
+        <input id="time-customer-id" placeholder="Kunden-ID (optional)" />
+      </div>
+
+      <div class="form-row">
+        <input id="time-comment" placeholder="Kurzbeschreibung / Details" />
+        <button id="btn-create-timeentry">Zeit buchen</button>
+      </div>
+
+      <div class="small">
+        Tipp: Entweder Dauer [h] direkt eintragen oder aus Start/Ende/Pause berechnen (kannst du später automatisieren).
+      </div>
+      <div id="time-error" class="error"></div>
+
+      <!-- Auftrag-Schnellsuche -->
+      <div class="panel-sub">
+        <h3>Auftrag / Projekt suchen</h3>
+        <div class="form-row">
+          <input id="time-project-search" placeholder="Suche nach Projekttitel oder Kunde…" />
+          <button id="btn-reload-projects-time">Projekte neu laden</button>
+        </div>
+        <div id="time-project-search-results" class="list small-list"></div>
+      </div>
+
+      <!-- CSV-Import -->
+      <div class="panel-sub">
+        <h3>CSV-Import aus bestehender App</h3>
+        <div class="form-row">
+          <input type="file" id="time-csv-file" accept=".csv" />
+          <button id="btn-import-csv">CSV importieren</button>
+        </div>
+        <div class="small">
+          Hinweis: Das Mapping der Spalten passt du im <code>app.js</code> an deine bestehende CSV an
+          (Kommentare im Code beachten).
+        </div>
+        <div id="time-csv-error" class="error"></div>
+      </div>
+
+      <!-- Letzte Einträge -->
+      <div class="panel-sub">
+        <h3>Letzte Zeit-Einträge</h3>
+        <div id="time-entry-list" class="list"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

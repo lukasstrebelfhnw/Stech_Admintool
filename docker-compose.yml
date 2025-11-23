@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16
+    container_name: stech_db
+    restart: always
+    environment:
+      POSTGRES_DB: stech_admin
+      POSTGRES_USER: stechadmin
+      POSTGRES_PASSWORD: stechsecret
+    volumes:
+      - ./db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    container_name: stech_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /srv/stech/projects:/srv/stech/projects
+    environment:
+      DATABASE_URL: postgresql+psycopg2://stechadmin:stechsecret@db:5432/stech_admin
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: stech_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
