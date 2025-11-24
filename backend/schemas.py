@@ -207,7 +207,20 @@ class TimeEntryCreate(TimeEntryBase):
     quelle_system: Optional[str] = None
 
 
+class TimeEntryRead(TimeEntryBase):
+    id: int
+    projektpfad: Optional[str] = None
+    customer_firma: Optional[str] = None
+    employee_name: Optional[str] = None
+    uebermittelt: bool
+    uebermittelt_am: Optional[datetime] = None
+    erstellt_am: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TimeEntryUpdate(BaseModel):
+    # Für Live-Stop & spätere Bearbeitung
     datum: Optional[date] = None
     start: Optional[time] = None
     ende: Optional[time] = None
@@ -218,21 +231,6 @@ class TimeEntryUpdate(BaseModel):
     customer_id: Optional[int] = None
     project_id: Optional[int] = None
     betrag: Optional[float] = None
-
-    # NEU: darf nur Admin setzen, aber Schema ist nötig
+    # Admin darf das sperren/entsperren
     uebermittelt: Optional[bool] = None
-
-
-class TimeEntryRead(TimeEntryBase):
-    id: int
-    erstellt_am: datetime
-
-    projektpfad: Optional[str] = None
-    customer_firma: Optional[str] = None
-    employee_name: Optional[str] = None
-
-    # NEU – Sperr-Status
-    uebermittelt: bool
     uebermittelt_am: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)

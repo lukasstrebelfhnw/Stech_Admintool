@@ -18,24 +18,26 @@ from schemas import (
 from filesystem import create_project_folders
 from crud_timeentries import check_no_overlap
 
+# -------------------------------------------------
+# DB Schema anlegen
+# -------------------------------------------------
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# CORS-Konfiguration
+# -------------------------------------------------
+# CORS
+# -------------------------------------------------
 origins = [
-    "http://192.168.178.83",
     "http://192.168.178.83:8080",
-    "http://stechadmin",
-    "http://stechadmin:8080",
-    "http://localhost",
+    "http://192.168.178.83",
     "http://localhost:8080",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,  # wir brauchen aktuell keine Cookies
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -52,6 +54,28 @@ def get_db():
 @app.get("/")
 def root():
     return {"msg": "STech Backend + PostgreSQL laufen!"}
+
+
+# -------------------------------------------------
+# Helper: Dauer berechnen
+# -------------------------------------------------
+
+def compute_duration(entry: models.TimeEntry) -> None:
+    """
+    Berechnet entry.dauer_stunden aus start/ende/pause_min.
+    NOP, wenn start oder ende fehlen.
+    """
+    if not entry.start or not entry.ende:
+        return
+
+    start_min = entry.start.hour * 60 + entry.start.minute
+    end_min = entry.ende.hour * 60 + entry.ende.minute
+    diff = max(0, end_min - start_min)
+
+    pause = entry.pause_min or 0
+    eff_min = max(0, diff - pause)
+
+    entry.dauer_stunden = eff_min / 60.0
 
 
 # ============================================================
@@ -136,7 +160,7 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
 
 @app.get("/projects/", response_model=List[ProjectRead])
 def list_projects(db: Session = Depends(get_db)):
-    # Nur offene Projekte → nur auf diese soll gestempelt werden
+    # Nur Projekte mit Status "Offen" zurückgeben (für Zeit-Stempeln)
     projects = (
         db.query(models.Project)
         .join(models.Project.customer)
@@ -159,7 +183,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
             detail="Projekt hat noch Zeiteinträge und kann nicht gelöscht werden.",
         )
 
-    # Projektordner auf dem OS löschen
+    # Projektordner löschen (unter /srv/stech/projects)
     if proj.projektpfad:
         try:
             base_dir = Path("/srv/stech/projects").resolve()
@@ -284,31 +308,16 @@ def create_time_entry(entry: TimeEntryCreate, db: Session = Depends(get_db)):
         quelle_datei=entry.quelle_datei,
         externe_id=entry.externe_id,
         quelle_system=entry.quelle_system or "api",
+        uebermittelt=False,
     )
+
+    # Dauer berechnen wenn start & ende vorhanden
+    compute_duration(db_entry)
+
     db.add(db_entry)
     db.commit()
     db.refresh(db_entry)
-
-    return TimeEntryRead(
-        id=db_entry.id,
-        employee_id=db_entry.employee_id,
-        customer_id=db_entry.customer_id,
-        project_id=db_entry.project_id,
-        datum=db_entry.datum,
-        start=db_entry.start,
-        ende=db_entry.ende,
-        pause_min=db_entry.pause_min,
-        dauer_stunden=db_entry.dauer_stunden,
-        taetigkeit=db_entry.taetigkeit,
-        details=db_entry.details,
-        betrag=db_entry.betrag,
-        uebermittelt=db_entry.uebermittelt,
-        uebermittelt_am=db_entry.uebermittelt_am,
-        erstellt_am=db_entry.erstellt_am,
-        projektpfad=db_entry.project.projektpfad if db_entry.project else None,
-        customer_firma=db_entry.customer.firma if db_entry.customer else None,
-        employee_name=db_entry.employee.name if db_entry.employee else None,
-    )
+    return db_entry
 
 
 @app.get("/timeentries/", response_model=List[TimeEntryRead])
@@ -333,37 +342,12 @@ def list_time_entries(
     if to:
         q = q.filter(models.TimeEntry.datum <= to)
 
-    # sortiert nach Datum + Startzeit
     entries = q.order_by(
         models.TimeEntry.datum.asc(),
         models.TimeEntry.start.asc()
     ).all()
 
-    result: list[TimeEntryRead] = []
-    for e in entries:
-        result.append(
-            TimeEntryRead(
-                id=e.id,
-                employee_id=e.employee_id,
-                customer_id=e.customer_id,
-                project_id=e.project_id,
-                datum=e.datum,
-                start=e.start,
-                ende=e.ende,
-                pause_min=e.pause_min,
-                dauer_stunden=e.dauer_stunden,
-                taetigkeit=e.taetigkeit,
-                details=e.details,
-                betrag=e.betrag,
-                uebermittelt=e.uebermittelt,
-                uebermittelt_am=e.uebermittelt_am,
-                erstellt_am=e.erstellt_am,
-                projektpfad=e.project.projektpfad if e.project else None,
-                customer_firma=e.customer.firma if e.customer else None,
-                employee_name=e.employee.name if e.employee else None,
-            )
-        )
-    return result
+    return entries
 
 
 @app.get("/timeentries/running", response_model=Optional[TimeEntryRead])
@@ -373,13 +357,14 @@ def get_running_time_entry(
 ):
     """
     Offener Live-Stempel-Eintrag für diesen Mitarbeiter:
-    start gesetzt, ende NULL.
+    start gesetzt, ende NULL, uebermittelt = False.
     """
     e = (
         db.query(models.TimeEntry)
         .filter(
             models.TimeEntry.employee_id == employee_id,
             models.TimeEntry.ende.is_(None),
+            models.TimeEntry.uebermittelt.is_(False),
         )
         .order_by(
             models.TimeEntry.datum.desc(),
@@ -387,29 +372,7 @@ def get_running_time_entry(
         )
         .first()
     )
-    if not e:
-        return None
-
-        return TimeEntryRead(
-        id=e.id,
-        employee_id=e.employee_id,
-        customer_id=e.customer_id,
-        project_id=e.project_id,
-        datum=e.datum,
-        start=e.start,
-        ende=e.ende,
-        pause_min=e.pause_min,
-        dauer_stunden=e.dauer_stunden,
-        taetigkeit=e.taetigkeit,
-        details=e.details,
-        betrag=e.betrag,
-        uebermittelt=e.uebermittelt,
-        uebermittelt_am=e.uebermittelt_am,
-        erstellt_am=e.erstellt_am,
-        projektpfad=e.project.projektpfad if e.project else None,
-        customer_firma=e.customer.firma if e.customer else None,
-        employee_name=e.employee.name if e.employee else None,
-    )
+    return e
 
 
 @app.put("/timeentries/{entry_id}", response_model=TimeEntryRead)
@@ -417,23 +380,10 @@ def update_time_entry(
     entry_id: int,
     entry_update: TimeEntryUpdate,
     db: Session = Depends(get_db),
-    force_admin: bool = Query(False),
 ):
-    """
-    Zeiteintrag aktualisieren.
-    Wenn der Eintrag bereits uebermittelt wurde, ist eine Änderung nur erlaubt,
-    wenn force_admin=True übergeben wird (Admin-Fall).
-    """
     db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
     if not db_entry:
         raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
-
-    # Sperre: nach Übermittlung nur noch Admin (force_admin) darf anpassen
-    if getattr(db_entry, "uebermittelt", False) and not force_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Zeiteintrag wurde bereits übermittelt und kann nicht mehr geändert werden.",
-        )
 
     # Generisches Update
     data = entry_update.model_dump(exclude_unset=True)
@@ -449,60 +399,30 @@ def update_time_entry(
             ende=db_entry.ende,
             entry_id=db_entry.id,
         )
+        # Dauer neu berechnen
+        compute_duration(db_entry)
 
     db.commit()
     db.refresh(db_entry)
-
-    return TimeEntryRead(
-        id=db_entry.id,
-        employee_id=db_entry.employee_id,
-        customer_id=db_entry.customer_id,
-        project_id=db_entry.project_id,
-        datum=db_entry.datum,
-        start=db_entry.start,
-        ende=db_entry.ende,
-        pause_min=db_entry.pause_min,
-        dauer_stunden=db_entry.dauer_stunden,
-        taetigkeit=db_entry.taetigkeit,
-        details=db_entry.details,
-        betrag=db_entry.betrag,
-        uebermittelt=db_entry.uebermittelt,
-        uebermittelt_am=db_entry.uebermittelt_am,
-        erstellt_am=db_entry.erstellt_am,
-        projektpfad=db_entry.project.projektpfad if db_entry.project else None,
-        customer_firma=db_entry.customer.firma if db_entry.customer else None,
-        employee_name=db_entry.employee.name if db_entry.employee else None,
-    )
+    return db_entry
 
 
 @app.delete("/timeentries/{entry_id}")
-def delete_time_entry(
-    entry_id: int,
-    db: Session = Depends(get_db),
-    force_admin: bool = Query(False),
-):
+def delete_time_entry(entry_id: int, db: Session = Depends(get_db)):
     """
     Zeiteintrag löschen:
     - DB-Eintrag löschen
     - falls 'quelle_datei' auf eine Datei unter /srv/stech/projects zeigt → Datei löschen
-    - Wenn uebermittelt=True, nur mit force_admin erlaubt.
     """
     db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
     if not db_entry:
         raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
 
-    if getattr(db_entry, "uebermittelt", False) and not force_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Zeiteintrag wurde bereits übermittelt und kann nicht mehr gelöscht werden.",
-        )
-
-    # Datei löschen
+    # Datei löschen (Option A: alles unter /srv/stech/projects ...)
     if db_entry.quelle_datei:
         try:
             base_dir = Path("/srv/stech/projects").resolve()
             p = Path(db_entry.quelle_datei)
-            # relativ → unter base_dir annehmen
             if not p.is_absolute():
                 p = base_dir / p
             p = p.resolve()
@@ -516,44 +436,36 @@ def delete_time_entry(
     return {"ok": True}
 
 
-# ============================================================
-#  Z E I T E I N T R Ä G E   Ü B E R M I T T E L N
-# ============================================================
+# ------------------------------------------------------------
+#  Offene Einträge „übermitteln“ (sperren)
+# ------------------------------------------------------------
 
-@app.post("/timeentries/submit")
-def submit_time_entries(
+@app.post("/timeentries/submit_open")
+def submit_open_timeentries(
+    employee_id: int,
     db: Session = Depends(get_db),
-    employee_id: int = Query(..., description="Mitarbeiter-ID"),
-    from_: Optional[date] = Query(None, alias="from"),
-    to: Optional[date] = None,
 ):
     """
-    Markiert alle Zeiteinträge eines Mitarbeiters im Zeitraum als 'uebermittelt'.
-    Danach sind sie für normale Benutzer gesperrt (Update/Delete nur noch mit force_admin).
+    Markiert alle Einträge dieses Mitarbeiters als 'uebermittelt',
+    die:
+        - ein Ende haben
+        - noch nicht uebermittelt wurden.
     """
-    q = db.query(models.TimeEntry).filter(
-        models.TimeEntry.employee_id == employee_id,
-        models.TimeEntry.uebermittelt.is_(False),
+    q = (
+        db.query(models.TimeEntry)
+        .filter(
+            models.TimeEntry.employee_id == employee_id,
+            models.TimeEntry.ende.is_not(None),
+            models.TimeEntry.uebermittelt.is_(False),
+        )
     )
 
-    if from_:
-        q = q.filter(models.TimeEntry.datum >= from_)
-    if to:
-        q = q.filter(models.TimeEntry.datum <= to)
-
-    entries = q.all()
     now = datetime.utcnow()
-
-    for e in entries:
+    count = 0
+    for e in q:
         e.uebermittelt = True
         e.uebermittelt_am = now
+        count += 1
 
     db.commit()
-
-    return {
-        "ok": True,
-        "employee_id": employee_id,
-        "count": len(entries),
-        "from": from_,
-        "to": to,
-    }
+    return {"ok": True, "count": count}
