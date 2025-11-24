@@ -2,7 +2,9 @@ from typing import Optional
 from datetime import date, time, datetime
 from pydantic import BaseModel, ConfigDict
 
-# ---------- Customer ----------
+# ============================================================
+#  C U S T O M E R
+# ============================================================
 
 class CustomerBase(BaseModel):
     firma: str
@@ -21,11 +23,12 @@ class CustomerCreate(CustomerBase):
 
 class CustomerRead(CustomerBase):
     id: int
-
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------- Project ----------
+# ============================================================
+#  P R O J E K T E
+# ============================================================
 
 class ProjectBase(BaseModel):
     customer_id: int
@@ -33,7 +36,7 @@ class ProjectBase(BaseModel):
     beschreibung: Optional[str] = None
     ist_offerte: bool = False
     stundensatz: Optional[float] = None
-    status: Optional[str] = "Offen"  
+    status: Optional[str] = "Offen"
 
 
 class ProjectCreate(ProjectBase):
@@ -43,16 +46,18 @@ class ProjectCreate(ProjectBase):
 class ProjectRead(ProjectBase):
     id: int
     projektpfad: Optional[str] = None
-    # NEU: Firmenname für Anzeige
+
+    # Anzeigezweck
     customer_firma: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------- Employee ----------
+# ============================================================
+#  M I T A R B E I T E R
+# ============================================================
 
 class EmployeeBase(BaseModel):
-    # Pflicht
     name: str
 
     # Persönlich
@@ -107,7 +112,7 @@ class EmployeeBase(BaseModel):
     aktiv: Optional[bool] = True
     erstellt_von: Optional[str] = None
 
-    # Rollen / Rechte
+    # Rechte
     is_admin: bool = False
     can_manage_projects: bool = False
     can_see_customers_projects: bool = False
@@ -118,7 +123,7 @@ class EmployeeCreate(EmployeeBase):
 
 
 class EmployeeUpdate(BaseModel):
-    # alles optional → für PUT /employees/{id}
+    # alles optional für PUT
     name: Optional[str] = None
     kuerzel: Optional[str] = None
     geburtsdatum: Optional[date] = None
@@ -173,11 +178,12 @@ class EmployeeRead(EmployeeBase):
     id: int
     erstellt_am: datetime
     geändert_am: datetime
-
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------- TimeEntry ----------
+# ============================================================
+#  Z E I T E I N T R Ä G E
+# ============================================================
 
 class TimeEntryBase(BaseModel):
     employee_id: int
@@ -201,18 +207,7 @@ class TimeEntryCreate(TimeEntryBase):
     quelle_system: Optional[str] = None
 
 
-class TimeEntryRead(TimeEntryBase):
-    id: int
-    projektpfad: Optional[str] = None
-    customer_firma: Optional[str] = None
-    employee_name: Optional[str] = None
-    erstellt_am: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class TimeEntryUpdate(BaseModel):
-    # Für Live-Stop & spätere Bearbeitung
     datum: Optional[date] = None
     start: Optional[time] = None
     ende: Optional[time] = None
@@ -223,3 +218,21 @@ class TimeEntryUpdate(BaseModel):
     customer_id: Optional[int] = None
     project_id: Optional[int] = None
     betrag: Optional[float] = None
+
+    # NEU: darf nur Admin setzen, aber Schema ist nötig
+    uebermittelt: Optional[bool] = None
+
+
+class TimeEntryRead(TimeEntryBase):
+    id: int
+    erstellt_am: datetime
+
+    projektpfad: Optional[str] = None
+    customer_firma: Optional[str] = None
+    employee_name: Optional[str] = None
+
+    # NEU – Sperr-Status
+    uebermittelt: bool
+    uebermittelt_am: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

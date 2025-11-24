@@ -147,9 +147,15 @@ class TimeEntry(Base):
     externe_id = Column(String, nullable=True)          # ID aus Stempel-App, falls vorhanden
     quelle_system = Column(String, nullable=True)       # z.B. "csv", "app", "manuell"
 
+    # Übermittlung / Sperre
+    # Wenn uebermittelt = True → Eintrag ist "fest" und darf nur noch vom Admin geändert werden.
+    uebermittelt = Column(Boolean, default=False, nullable=False)
+    uebermittelt_am = Column(DateTime, nullable=True)
+
     erstellt_am = Column(DateTime, default=datetime.utcnow)
 
     # Beziehungen
     employee = relationship("Employee", back_populates="time_entries")
     customer = relationship("Customer", back_populates="time_entries")
     project = relationship("Project", back_populates="time_entries")
+

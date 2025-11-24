@@ -40,3 +40,11 @@ docker logs stech_backend --tail=50
 
 Datenbank löschen
 sudo rm -rf db
+
+Git
+Änderungen einem commit hinzufügen
+git add .
+Commit mit Kommentar
+git commit -m "Zeiterfassung,Datenmangement,Admin angepasst_V2"
+Auf GitHub pushen
+git push

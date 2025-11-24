@@ -18,9 +18,10 @@ let EMPLOYEES_CACHE_ADMIN = [];
 function setTodayAsDefaultDate() {
     const dateEl = document.getElementById("time-date");
     const viewDateEl = document.getElementById("time-view-date");
-    const today = new Date().toISOString().slice(0, 10);
-    if (dateEl && !dateEl.value) dateEl.value = today;
-    if (viewDateEl && !viewDateEl.value) viewDateEl.value = today;
+    const today = new Date();
+    const todayStr = formatDateLocal(today);
+    if (dateEl && !dateEl.value) dateEl.value = todayStr;
+    if (viewDateEl && !viewDateEl.value) viewDateEl.value = todayStr;
 }
 
 function parseTimeToMinutes(str) {
@@ -65,6 +66,14 @@ function updateTabVisibility() {
 
     if (tabTimeBtn) tabTimeBtn.style.display = "";
     if (tabTimeContent) tabTimeContent.style.display = "";
+}
+
+// Datumsformatierung ohne Timezone-Verschiebung
+function formatDateLocal(dt) {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
 }
 
 // ---------- Backend-Status ----------
@@ -158,7 +167,8 @@ async function loadCustomers() {
 
             const sub = document.createElement("div");
             sub.className = "item-sub";
-            sub.textContent = `${c.kontaktperson || "-"}${c.ort ? " · " + c.ort : ""}${c.email ? " · " + c.email : ""}`;
+            sub.textContent =
+                `${c.kontaktperson || "-"}${c.ort ? " · " + c.ort : ""}${c.email ? " · " + c.email : ""}`;
 
             div.appendChild(header);
             div.appendChild(sub);
@@ -293,7 +303,8 @@ async function loadProjects() {
 
             const sub = document.createElement("div");
             sub.className = "item-sub";
-            sub.textContent = `Kunde: ${p.customer_firma || "ID " + p.customer_id}${p.projektpfad ? " · " + p.projektpfad : ""}`;
+            sub.textContent =
+                `Kunde: ${p.customer_firma || "ID " + p.customer_id}${p.projektpfad ? " · " + p.projektpfad : ""}`;
 
             div.appendChild(title);
             div.appendChild(sub);
@@ -491,9 +502,10 @@ function getNowTimeStr() {
 }
 
 function getTodayStr() {
-    return new Date().toISOString().slice(0, 10);
+    return formatDateLocal(new Date());
 }
 
+// Start: ggf. laufenden Eintrag stoppen + neuen starten
 async function startTimeTracking() {
     const errEl = document.getElementById("time-error");
     if (errEl) errEl.textContent = "";
@@ -513,14 +525,31 @@ async function startTimeTracking() {
         return;
     }
 
-    // Check ob schon etwas läuft
+    // Immer aktuellen laufenden Eintrag holen
+    await fetchRunningEntry(empId);
+    const nowStr = getNowTimeStr();
+
+    // Falls etwas läuft → zuerst stoppen
     if (CURRENT_RUNNING_ENTRY) {
-        if (errEl) errEl.textContent = "Es läuft bereits ein Eintrag – zuerst stoppen oder pausieren.";
-        return;
+        try {
+            const respStop = await fetch(`${API_BASE}/timeentries/${CURRENT_RUNNING_ENTRY.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ende: nowStr }),
+            });
+            if (!respStop.ok) {
+                const txt = await respStop.text();
+                throw new Error(`Status ${respStop.status}: ${txt}`);
+            }
+            updateRunningUI(null);
+        } catch (err) {
+            if (errEl) errEl.textContent = `Fehler beim Stoppen des laufenden Eintrags: ${err}`;
+            return;
+        }
     }
 
     let dateStr = dateEl.value || getTodayStr();
-    let startStr = startEl.value ? `${startEl.value}:00` : getNowTimeStr();
+    let startStr = startEl.value ? `${startEl.value}:00` : nowStr;
 
     const projectIdStr = projSelect.value;
     let projectId = projectIdStr ? parseInt(projectIdStr, 10) : null;
@@ -568,10 +597,7 @@ async function startTimeTracking() {
     }
 }
 
-// Pause-Logik:
-// - Wenn aktuell Arbeit läuft → Arbeit mit Ende=jetzt beenden, neue Pause starten.
-// - Wenn aktuell Pause läuft → Pause mit Ende=jetzt beenden.
-// - Immer nur EIN offener Eintrag pro Mitarbeiter.
+// Pause-Logik wie vorher
 async function pauseTimeTracking() {
     const errEl = document.getElementById("time-error");
     if (errEl) errEl.textContent = "";
@@ -728,40 +754,34 @@ async function stopTimeTracking() {
 // ============================================================
 
 function getRangeForViewMode(mode, baseDateStr) {
-    const base = baseDateStr ? new Date(baseDateStr) : new Date();
+    const base = baseDateStr ? new Date(baseDateStr + "T00:00:00") : new Date();
     const y = base.getFullYear();
     const m = base.getMonth();
     const d = base.getDate();
 
-    function fmt(dt) {
-        return dt.toISOString().slice(0, 10);
-    }
-
     if (mode === "week") {
         const day = base.getDay(); // 0=So..6=Sa
         const diffToMonday = (day + 6) % 7;
-        const monday = new Date(base);
-        monday.setDate(d - diffToMonday);
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        return { from: fmt(monday), to: fmt(sunday) };
+        const monday = new Date(y, m, d - diffToMonday);
+        const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+        return { from: formatDateLocal(monday), to: formatDateLocal(sunday) };
     } else if (mode === "month") {
         const first = new Date(y, m, 1);
         const last = new Date(y, m + 1, 0);
-        return { from: fmt(first), to: fmt(last) };
+        return { from: formatDateLocal(first), to: formatDateLocal(last) };
     } else if (mode === "year") {
         const first = new Date(y, 0, 1);
         const last = new Date(y, 11, 31);
-        return { from: fmt(first), to: fmt(last) };
+        return { from: formatDateLocal(first), to: formatDateLocal(last) };
     } else {
-        // day
         const dt = new Date(y, m, d);
-        return { from: fmt(dt), to: fmt(dt) };
+        const s = formatDateLocal(dt);
+        return { from: s, to: s };
     }
 }
 
-function renderTimePieChart(totalsByActivity) {
-    const canvas = document.getElementById("time-pie-chart");
+// Piechart für EIN Projekt in ein bestimmtes Canvas
+function renderPieForCanvas(canvas, totalsByActivity, titleText) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const width = canvas.width;
@@ -772,14 +792,20 @@ function renderTimePieChart(totalsByActivity) {
     if (entries.length === 0) {
         ctx.fillStyle = "#9ca3af";
         ctx.font = "12px system-ui";
-        ctx.fillText("Keine Daten für ausgewählten Zeitraum.", 10, 20);
+        ctx.fillText(`${titleText}: Keine Daten`, 10, 20);
         return;
     }
 
     const total = entries.reduce((sum, [, v]) => sum + v, 0);
     const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) / 2 - 10;
+    const centerY = height / 2 + 10;
+    const radius = Math.min(width, height) / 2 - 20;
+
+    // Titel
+    ctx.fillStyle = "#e5e7eb";
+    ctx.font = "12px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(titleText, centerX, 14);
 
     let startAngle = -Math.PI / 2;
 
@@ -787,7 +813,6 @@ function renderTimePieChart(totalsByActivity) {
         const fraction = val / total;
         const endAngle = startAngle + fraction * 2 * Math.PI;
 
-        // einfache Farbgenerierung
         const hue = (idx * 60) % 360;
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
@@ -800,16 +825,54 @@ function renderTimePieChart(totalsByActivity) {
     });
 
     // Legende
-    ctx.font = "11px system-ui";
-    let legendY = 14;
+    ctx.font = "10px system-ui";
+    ctx.textAlign = "left";
+    let legendY = 24;
     entries.forEach(([label, val], idx) => {
         const hue = (idx * 60) % 360;
-        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
-        ctx.fillRect(10, legendY - 8, 10, 10);
-        ctx.fillStyle = "#e5e7eb";
         const pct = ((val / total) * 100).toFixed(1);
-        ctx.fillText(`${label} (${val.toFixed(2)} h, ${pct}%)`, 25, legendY);
+        const text = `${label || "-"} (${val.toFixed(2)} h, ${pct}%)`;
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.fillRect(5, legendY + 4, 8, 8);
+        ctx.fillStyle = "#e5e7eb";
+        ctx.fillText(text, 18, legendY + 12);
         legendY += 14;
+    });
+}
+
+// Pro Projekt ein Canvas
+function renderProjectCharts(perProjectTotals) {
+    const container = document.getElementById("time-pie-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    const projectEntries = Array.from(perProjectTotals.entries());
+    if (projectEntries.length === 0) {
+        const info = document.createElement("div");
+        info.className = "small";
+        info.textContent = "Keine Daten für ausgewählten Zeitraum.";
+        container.appendChild(info);
+        return;
+    }
+
+    projectEntries.forEach(([projectKey, infoObj]) => {
+        const wrapper = document.createElement("div");
+        wrapper.style.display = "inline-block";
+        wrapper.style.margin = "4px";
+        wrapper.style.border = "1px solid #1f2937";
+        wrapper.style.borderRadius = "8px";
+        wrapper.style.padding = "4px";
+        wrapper.style.background = "#020617";
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 280;
+        canvas.height = 220;
+
+        wrapper.appendChild(canvas);
+        container.appendChild(wrapper);
+
+        renderPieForCanvas(canvas, infoObj.totalsByActivity, infoObj.title);
     });
 }
 
@@ -836,6 +899,18 @@ async function loadTimeEntries() {
         params.set("employee_id", empSelect.value);
     }
 
+    // sicherstellen, dass Projekte für Anzeigen vorhanden sind
+    if (!PROJECTS_CACHE || PROJECTS_CACHE.length === 0) {
+        try {
+            const respP = await fetch(`${API_BASE}/projects/`);
+            if (respP.ok) {
+                PROJECTS_CACHE = await respP.json();
+            }
+        } catch {
+            // ignorieren, Anzeige fällt dann auf ID zurück
+        }
+    }
+
     try {
         const resp = await fetch(`${API_BASE}/timeentries/?${params.toString()}`);
         if (!resp.ok) throw new Error(`Status ${resp.status}`);
@@ -844,11 +919,12 @@ async function loadTimeEntries() {
         listEl.innerHTML = "";
         if (!data || data.length === 0) {
             listEl.innerHTML = "<div class='small'>Keine Einträge im gewählten Zeitraum.</div>";
-            renderTimePieChart({});
+            renderProjectCharts(new Map());
             return;
         }
 
-        const totalsByActivity = {};
+        // für Auswertung: pro Projekt Totale nach Tätigkeit
+        const perProjectTotals = new Map(); // key: project_id oder 'ohne', value: {title, totalsByActivity:{}}
 
         data.forEach((e) => {
             const div = document.createElement("div");
@@ -857,13 +933,29 @@ async function loadTimeEntries() {
             const title = document.createElement("div");
             title.className = "item-title";
 
-            const left = document.createElement("span");
             const startStr = e.start ? formatTimeStr(e.start) : "";
             const endeStr = e.ende ? formatTimeStr(e.ende) : "";
             const act = e.taetigkeit || "-";
-            left.textContent = `${e.datum} ${startStr}${endeStr ? " - " + endeStr : ""} · ${act}`;
+
+            const proj = PROJECTS_CACHE.find((p) => p.id === e.project_id);
+            const projName = proj ? proj.titel : (e.project_id ? `Projekt #${e.project_id}` : "Kein Projekt");
+            const custName = e.customer_firma || (proj && proj.customer_firma) || (e.customer_id ? `Kunde #${e.customer_id}` : "Kein Kunde");
+
+            const left = document.createElement("span");
+            // gewünschte Info: Datum, Start/Ende, Projektname, Tätigkeit, Kundenname
+            left.textContent = `${e.datum} ${startStr}${endeStr ? " - " + endeStr : ""} · ${projName} · ${act} · ${custName}`;
 
             const right = document.createElement("span");
+            // Button Bearbeiten
+            const editBtn = document.createElement("button");
+            editBtn.textContent = "Bearbeiten";
+            editBtn.style.marginRight = "4px";
+            editBtn.addEventListener("click", () => {
+                editTimeEntry(e);
+            });
+            right.appendChild(editBtn);
+
+            // Button Löschen (nur Admin)
             if (CURRENT_USER.is_admin) {
                 const delBtn = document.createElement("button");
                 delBtn.textContent = "Löschen";
@@ -892,17 +984,15 @@ async function loadTimeEntries() {
 
             const sub = document.createElement("div");
             sub.className = "item-sub";
-            const projText = e.projektpfad ? e.projektpfad : (e.project_id ? "Projekt #" + e.project_id : "–");
-            const custText = e.customer_firma || (e.customer_id ? "Kunde #" + e.customer_id : "–");
             const empText = e.employee_name || (e.employee_id ? "Mitarbeiter #" + e.employee_id : "–");
-
-            sub.textContent = `Projekt: ${projText} · Kunde: ${custText} · Mitarbeiter: ${empText}${e.details ? " · " + e.details : ""}`;
+            sub.textContent =
+                `Mitarbeiter: ${empText}${e.details ? " · " + e.details : ""}`;
 
             div.appendChild(title);
             div.appendChild(sub);
             listEl.appendChild(div);
 
-            // Dauer aufsummieren
+            // Dauer fürs Projekt sammeln
             let dur = e.dauer_stunden;
             if (dur == null) {
                 if (e.start && e.ende) {
@@ -913,18 +1003,99 @@ async function loadTimeEntries() {
                     }
                 }
             }
-            if (dur != null) {
-                const key = act;
-                totalsByActivity[key] = (totalsByActivity[key] || 0) + dur;
+            if (dur != null && dur > 0) {
+                const projKey = e.project_id || "ohne";
+                if (!perProjectTotals.has(projKey)) {
+                    perProjectTotals.set(projKey, {
+                        title: projName,
+                        totalsByActivity: {},
+                    });
+                }
+                const info = perProjectTotals.get(projKey);
+                const keyAct = act || "-";
+                info.totalsByActivity[keyAct] = (info.totalsByActivity[keyAct] || 0) + dur;
             }
         });
 
-        renderTimePieChart(totalsByActivity);
+        renderProjectCharts(perProjectTotals);
     } catch (err) {
         if (errEl) errEl.textContent = `Fehler beim Laden der Zeiteinträge: ${err}`;
         listEl.innerHTML = "";
-        renderTimePieChart({});
+        renderProjectCharts(new Map());
     }
+}
+
+// Eintrag bearbeiten (einfach per prompt, reicht erstmal)
+async function editTimeEntry(e) {
+    // Platzhalter: wenn du später "eingereicht" im Backend hast, hier prüfen
+    const isSubmitted = e.eingereicht === true;
+    if (isSubmitted && !CURRENT_USER.is_admin) {
+        alert("Dieser Eintrag wurde übermittelt und kann nur vom Admin geändert werden.");
+        return;
+    }
+
+    const newStart = prompt(
+        "Startzeit (HH:MM), leer = unverändert",
+        e.start ? formatTimeStr(e.start) : ""
+    );
+    if (newStart === null) return; // Abbruch
+
+    const newEnd = prompt(
+        "Endzeit (HH:MM), leer = unverändert",
+        e.ende ? formatTimeStr(e.ende) : ""
+    );
+    if (newEnd === null) return;
+
+    const newAct = prompt(
+        "Tätigkeit (Text), leer = unverändert",
+        e.taetigkeit || ""
+    );
+    if (newAct === null) return;
+
+    const newDetails = prompt(
+        "Kommentar / Details, leer = unverändert",
+        e.details || ""
+    );
+    if (newDetails === null) return;
+
+    const payload = {};
+    if (newStart !== "") payload.start = newStart ? `${newStart}:00` : null;
+    if (newEnd !== "") payload.ende = newEnd ? `${newEnd}:00` : null;
+    if (newAct !== "") payload.taetigkeit = newAct;
+    if (newDetails !== "") payload.details = newDetails;
+
+    try {
+        const resp = await fetch(`${API_BASE}/timeentries/${e.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error(`Status ${resp.status}: ${txt}`);
+        }
+        await loadTimeEntries();
+    } catch (err) {
+        alert("Fehler beim Bearbeiten des Eintrags: " + err);
+    }
+}
+
+// Offene Einträge übermitteln (Platzhalter – Backend braucht noch Flag/Endpoint)
+async function submitOpenEntries() {
+    const empSelect = document.getElementById("time-employee");
+    if (!empSelect || !empSelect.value) {
+        alert("Bitte zuerst einen Mitarbeiter wählen.");
+        return;
+    }
+
+    // Hier wäre die Idee:
+    // - im Backend ein Feld `eingereicht: bool` in TimeEntry
+    // - und einen Endpoint z.B. POST /timeentries/submit_open?employee_id=...
+    // Aktuell existiert das (noch) nicht, deshalb:
+    alert(
+        "Die Funktion 'Offene Einträge übermitteln' benötigt noch eine Erweiterung im Backend (Flag z.B. `eingereicht`). " +
+        "Im Moment ist dies nur ein Platzhalter."
+    );
 }
 
 // ============================================================
@@ -1300,6 +1471,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-time-start")?.addEventListener("click", startTimeTracking);
     document.getElementById("btn-time-pause")?.addEventListener("click", pauseTimeTracking);
     document.getElementById("btn-time-stop")?.addEventListener("click", stopTimeTracking);
+
+    // Offene Einträge übermitteln (Platzhalter)
+    document.getElementById("btn-time-submit-open")?.addEventListener("click", submitOpenEntries);
 
     // Admin
     document.getElementById("btn-admin-employee-save")?.addEventListener("click", saveEmployeeAdmin);

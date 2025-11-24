@@ -1,8 +1,9 @@
+# backend/main.py
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import shutil
 
@@ -23,15 +24,18 @@ app = FastAPI()
 
 # CORS-Konfiguration
 origins = [
-    "http://192.168.178.83:8080",
     "http://192.168.178.83",
+    "http://192.168.178.83:8080",
+    "http://stechadmin",
+    "http://stechadmin:8080",
+    "http://localhost",
     "http://localhost:8080",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=False,  # wir brauchen aktuell keine Cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -155,7 +159,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
             detail="Projekt hat noch Zeiteinträge und kann nicht gelöscht werden.",
         )
 
-    # Projektordner auf dem OS löschen (Option A + JA)
+    # Projektordner auf dem OS löschen
     if proj.projektpfad:
         try:
             base_dir = Path("/srv/stech/projects").resolve()
@@ -298,6 +302,8 @@ def create_time_entry(entry: TimeEntryCreate, db: Session = Depends(get_db)):
         taetigkeit=db_entry.taetigkeit,
         details=db_entry.details,
         betrag=db_entry.betrag,
+        uebermittelt=db_entry.uebermittelt,
+        uebermittelt_am=db_entry.uebermittelt_am,
         erstellt_am=db_entry.erstellt_am,
         projektpfad=db_entry.project.projektpfad if db_entry.project else None,
         customer_firma=db_entry.customer.firma if db_entry.customer else None,
@@ -327,7 +333,12 @@ def list_time_entries(
     if to:
         q = q.filter(models.TimeEntry.datum <= to)
 
-    entries = q.all()
+    # sortiert nach Datum + Startzeit
+    entries = q.order_by(
+        models.TimeEntry.datum.asc(),
+        models.TimeEntry.start.asc()
+    ).all()
+
     result: list[TimeEntryRead] = []
     for e in entries:
         result.append(
@@ -344,6 +355,8 @@ def list_time_entries(
                 taetigkeit=e.taetigkeit,
                 details=e.details,
                 betrag=e.betrag,
+                uebermittelt=e.uebermittelt,
+                uebermittelt_am=e.uebermittelt_am,
                 erstellt_am=e.erstellt_am,
                 projektpfad=e.project.projektpfad if e.project else None,
                 customer_firma=e.customer.firma if e.customer else None,
@@ -377,7 +390,7 @@ def get_running_time_entry(
     if not e:
         return None
 
-    return TimeEntryRead(
+        return TimeEntryRead(
         id=e.id,
         employee_id=e.employee_id,
         customer_id=e.customer_id,
@@ -390,6 +403,8 @@ def get_running_time_entry(
         taetigkeit=e.taetigkeit,
         details=e.details,
         betrag=e.betrag,
+        uebermittelt=e.uebermittelt,
+        uebermittelt_am=e.uebermittelt_am,
         erstellt_am=e.erstellt_am,
         projektpfad=e.project.projektpfad if e.project else None,
         customer_firma=e.customer.firma if e.customer else None,
@@ -402,10 +417,23 @@ def update_time_entry(
     entry_id: int,
     entry_update: TimeEntryUpdate,
     db: Session = Depends(get_db),
+    force_admin: bool = Query(False),
 ):
+    """
+    Zeiteintrag aktualisieren.
+    Wenn der Eintrag bereits uebermittelt wurde, ist eine Änderung nur erlaubt,
+    wenn force_admin=True übergeben wird (Admin-Fall).
+    """
     db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
     if not db_entry:
         raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
+
+    # Sperre: nach Übermittlung nur noch Admin (force_admin) darf anpassen
+    if getattr(db_entry, "uebermittelt", False) and not force_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Zeiteintrag wurde bereits übermittelt und kann nicht mehr geändert werden.",
+        )
 
     # Generisches Update
     data = entry_update.model_dump(exclude_unset=True)
@@ -438,6 +466,8 @@ def update_time_entry(
         taetigkeit=db_entry.taetigkeit,
         details=db_entry.details,
         betrag=db_entry.betrag,
+        uebermittelt=db_entry.uebermittelt,
+        uebermittelt_am=db_entry.uebermittelt_am,
         erstellt_am=db_entry.erstellt_am,
         projektpfad=db_entry.project.projektpfad if db_entry.project else None,
         customer_firma=db_entry.customer.firma if db_entry.customer else None,
@@ -446,17 +476,28 @@ def update_time_entry(
 
 
 @app.delete("/timeentries/{entry_id}")
-def delete_time_entry(entry_id: int, db: Session = Depends(get_db)):
+def delete_time_entry(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    force_admin: bool = Query(False),
+):
     """
     Zeiteintrag löschen:
     - DB-Eintrag löschen
     - falls 'quelle_datei' auf eine Datei unter /srv/stech/projects zeigt → Datei löschen
+    - Wenn uebermittelt=True, nur mit force_admin erlaubt.
     """
     db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
     if not db_entry:
         raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
 
-    # Datei löschen (Option A: alles unter /srv/stech/projects ...)
+    if getattr(db_entry, "uebermittelt", False) and not force_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Zeiteintrag wurde bereits übermittelt und kann nicht mehr gelöscht werden.",
+        )
+
+    # Datei löschen
     if db_entry.quelle_datei:
         try:
             base_dir = Path("/srv/stech/projects").resolve()
@@ -473,3 +514,46 @@ def delete_time_entry(entry_id: int, db: Session = Depends(get_db)):
     db.delete(db_entry)
     db.commit()
     return {"ok": True}
+
+
+# ============================================================
+#  Z E I T E I N T R Ä G E   Ü B E R M I T T E L N
+# ============================================================
+
+@app.post("/timeentries/submit")
+def submit_time_entries(
+    db: Session = Depends(get_db),
+    employee_id: int = Query(..., description="Mitarbeiter-ID"),
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = None,
+):
+    """
+    Markiert alle Zeiteinträge eines Mitarbeiters im Zeitraum als 'uebermittelt'.
+    Danach sind sie für normale Benutzer gesperrt (Update/Delete nur noch mit force_admin).
+    """
+    q = db.query(models.TimeEntry).filter(
+        models.TimeEntry.employee_id == employee_id,
+        models.TimeEntry.uebermittelt.is_(False),
+    )
+
+    if from_:
+        q = q.filter(models.TimeEntry.datum >= from_)
+    if to:
+        q = q.filter(models.TimeEntry.datum <= to)
+
+    entries = q.all()
+    now = datetime.utcnow()
+
+    for e in entries:
+        e.uebermittelt = True
+        e.uebermittelt_am = now
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "employee_id": employee_id,
+        "count": len(entries),
+        "from": from_,
+        "to": to,
+    }
