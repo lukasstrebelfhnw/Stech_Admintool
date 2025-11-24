@@ -1,10 +1,8 @@
 FROM nginx:alpine
 
-# Standard-HTML-Verzeichnis
-WORKDIR /usr/share/nginx/html
-
-# Alle statischen Dateien (HTML, JS, CSS) in den Webroot kopieren
+# alle Dateien in /usr/share/nginx/html kopieren
 COPY . /usr/share/nginx/html
 
-# Nginx läuft standardmäßig auf Port 80
-EXPOSE 80
+# sicherstellen dass app.js existiert
+RUN ls -l /usr/share/nginx/html
+

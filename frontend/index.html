@@ -101,7 +101,8 @@
     }
 
     .form-row input,
-    .form-row select {
+    .form-row select,
+    .form-row textarea {
       flex: 1;
       min-width: 120px;
       padding: 6px 8px;
@@ -110,6 +111,11 @@
       background: #020617;
       color: #e5e7eb;
       font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 60px;
     }
 
     button {
@@ -125,6 +131,14 @@
 
     button:hover {
       background: #1d4ed8;
+    }
+
+    .btn-danger {
+      background: #b91c1c;
+    }
+
+    .btn-danger:hover {
+      background: #991b1b;
     }
 
     .toolbar {
@@ -148,10 +162,17 @@
       padding: 6px 4px;
       border-bottom: 1px solid #1f2937;
       font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
 
     .item-title {
       font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
 
     .item-sub {
@@ -191,6 +212,77 @@
       font-size: 11px;
       margin-left: 4px;
     }
+
+    .admin-section {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #020617;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+    }
+
+    .admin-section h3 {
+      margin-top: 0;
+    }
+
+    #admin-employee-form input,
+    #admin-employee-form textarea {
+      width: 100%;
+    }
+
+    #admin-employee-list,
+    #admin-activity-list {
+      margin-bottom: 8px;
+      max-height: 240px;
+      overflow-y: auto;
+      border-top: 1px solid #1f2937;
+      padding-top: 4px;
+    }
+
+    label {
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-right: 8px;
+    }
+
+    h4 {
+      margin: 8px 0 4px 0;
+      font-size: 13px;
+    }
+
+    /* Subtabs im Zeit-Tab */
+
+    .subtabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .subtab-btn {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: #020617;
+      color: #9ca3af;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .subtab-btn.active {
+      background: #1f2937;
+      color: #e5e7eb;
+      border-color: #2563eb;
+    }
+
+    .subtab-content {
+      display: none;
+    }
+
+    .subtab-content.active {
+      display: block;
+    }
   </style>
 </head>
 
@@ -202,8 +294,9 @@
 
   <!-- Tabs -->
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="kp">Kunden & Projekte</button>
+    <button class="tab-btn active" data-tab="kp">Kunden &amp; Projekte</button>
     <button class="tab-btn" data-tab="time">Zeiterfassung</button>
+    <button class="tab-btn" data-tab="admin">Admin</button>
   </nav>
 
   <!-- TAB 1: Kunden & Projekte -->
@@ -234,6 +327,12 @@
         <div class="form-row">
           <input id="project-customer-id" placeholder="Kunden-ID" />
           <input id="project-title" placeholder="Projekttitel" />
+          <select id="project-status">
+            <option value="Offen">Offen</option>
+            <option value="Offeriert">Offeriert</option>
+            <option value="Rechnung offen">Rechnung offen</option>
+            <option value="Abgeschlossen">Abgeschlossen</option>
+          </select>
           <button id="btn-create-project">Projekt anlegen</button>
         </div>
         <div class="toolbar">
@@ -250,78 +349,219 @@
   <!-- TAB 2: Zeiterfassung -->
   <div id="tab-time" class="tab-content">
     <section class="panel">
-      <h2>Zeiterfassung / Stempeln</h2>
+      <h2>Zeiterfassung</h2>
 
-      <!-- Stempel-Formular -->
-      <h3>Neuen Zeit-Eintrag buchen</h3>
-      <div class="form-row">
-        <select id="time-employee">
-          <option value="">Mitarbeiter wählen…</option>
-        </select>
-        <select id="time-activity">
-          <option value="">Tätigkeit wählen…</option>
-          <option value="Konstruktion">Konstruktion</option>
-          <option value="Projektleitung">Projektleitung</option>
-          <option value="Inbetriebnahme">Inbetriebnahme</option>
-          <option value="Service">Service</option>
-          <option value="Support">Support</option>
-          <option value="Fahrtzeit">Fahrtzeit</option>
-          <option value="Meeting">Meeting</option>
-          <option value="Administration">Administration</option>
-        </select>
+      <!-- Untertabs -->
+      <div class="subtabs">
+        <button class="subtab-btn active" data-subtab="live">Live-Stempeln</button>
+        <button class="subtab-btn" data-subtab="entries">Zeiteinträge</button>
       </div>
 
-      <div class="form-row">
-        <input id="time-date" type="date" />
-        <input id="time-start" type="time" placeholder="Start" />
-        <input id="time-end" type="time" placeholder="Ende" />
-        <input id="time-pause" type="number" placeholder="Pause [min]" />
-        <input id="time-hours" type="number" step="0.01" placeholder="Dauer [h]" />
-      </div>
+      <!-- SUBTAB: Live-Stempeln -->
+      <div id="time-sub-live" class="subtab-content active">
+        <h3>Live-Stempeln</h3>
 
-      <div class="form-row">
-        <input id="time-project-id" placeholder="Projekt-ID (optional)" />
-        <input id="time-customer-id" placeholder="Kunden-ID (optional)" />
-      </div>
-
-      <div class="form-row">
-        <input id="time-comment" placeholder="Kurzbeschreibung / Details" />
-        <button id="btn-create-timeentry">Zeit buchen</button>
-      </div>
-
-      <div class="small">
-        Tipp: Entweder Dauer [h] direkt eintragen oder aus Start/Ende/Pause berechnen (kannst du später automatisieren).
-      </div>
-      <div id="time-error" class="error"></div>
-
-      <!-- Auftrag-Schnellsuche -->
-      <div class="panel-sub">
-        <h3>Auftrag / Projekt suchen</h3>
         <div class="form-row">
-          <input id="time-project-search" placeholder="Suche nach Projekttitel oder Kunde…" />
-          <button id="btn-reload-projects-time">Projekte neu laden</button>
-        </div>
-        <div id="time-project-search-results" class="list small-list"></div>
-      </div>
+          <select id="time-employee">
+            <option value="">Mitarbeiter wählen…</option>
+          </select>
 
-      <!-- CSV-Import -->
-      <div class="panel-sub">
-        <h3>CSV-Import aus bestehender App</h3>
-        <div class="form-row">
-          <input type="file" id="time-csv-file" accept=".csv" />
-          <button id="btn-import-csv">CSV importieren</button>
+          <select id="time-activity">
+            <option value="">Tätigkeit wählen…</option>
+            <option value="Aufräumen">Aufräumen</option>
+            <option value="Logistik">Logistik</option>
+            <option value="Pause">Pause</option>
+            <option value="CAD">CAD</option>
+            <option value="Engineering">Engineering</option>
+            <option value="Montage">Montage</option>
+            <option value="Werkstatt">Werkstatt</option>
+            <option value="Werkstatt extern">Werkstatt extern</option>
+            <option value="Montage extern">Montage extern</option>
+            <option value="Projektleitung">Projektleitung</option>
+            <option value="Meeting">Meeting</option>
+            <option value="Administration">Administration</option>
+            <option value="Software">Software</option>
+            <option value="Inbetriebnahme">Inbetriebnahme</option>
+            <option value="Support">Support</option>
+            <option value="Service">Service</option>
+          </select>
         </div>
+
+        <div class="form-row">
+          <input id="time-date" type="date" />
+          <input id="time-start" type="time" />
+          <!-- optionales End-Zeit-Feld, für Stop-Logik, kann versteckt sein -->
+          <input id="time-end" type="time" style="display:none;" />
+        </div>
+
+        <div class="form-row">
+          <select id="time-project-select">
+            <option value="">Projekt wählen…</option>
+          </select>
+          <input id="time-comment" placeholder="Kurzbeschreibung / Details" />
+        </div>
+
+        <div class="form-row">
+          <button id="btn-time-start">Start</button>
+          <button id="btn-time-pause">Pause</button>
+          <button id="btn-time-stop">Stop</button>
+          <span id="time-running-info" class="small"></span>
+        </div>
+
         <div class="small">
-          Hinweis: Das Mapping der Spalten passt du im <code>app.js</code> an deine bestehende CSV an
-          (Kommentare im Code beachten).
+          Startzeit wird automatisch auf jetzt gesetzt, kann aber im Feld „Start“ über die Drehräder angepasst werden.
+          Für Live-Stempeln wird nur die Startzeit gespeichert – Ende/Dauer bearbeitest du später in den Zeiteinträgen.
         </div>
-        <div id="time-csv-error" class="error"></div>
+        <div id="time-error" class="error"></div>
       </div>
 
-      <!-- Letzte Einträge -->
-      <div class="panel-sub">
-        <h3>Letzte Zeit-Einträge</h3>
+      <!-- SUBTAB: Zeiteinträge -->
+      <div id="time-sub-entries" class="subtab-content">
+        <h3>Zeiteinträge &amp; Auswertung</h3>
+
+        <div class="form-row">
+          <label for="time-view-mode">Ansicht:</label>
+          <select id="time-view-mode">
+            <option value="day">Tag</option>
+            <option value="week">Woche</option>
+            <option value="month">Monat</option>
+            <option value="year">Jahr</option>
+          </select>
+
+          <input type="date" id="time-view-date" />
+        </div>
+
+        <div class="form-row">
+          <canvas id="time-pie-chart" width="320" height="240"></canvas>
+        </div>
+
+        <h4>Zeiteinträge (Liste)</h4>
         <div id="time-entry-list" class="list"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- TAB 3: Admin -->
+  <div id="tab-admin" class="tab-content">
+    <section class="panel">
+      <h2>Admin</h2>
+
+      <div class="admin-section">
+        <h3>Mitarbeiter bearbeiten / anlegen</h3>
+
+        <div class="form-row">
+          <select id="admin-employee-select">
+            <option value="">Mitarbeiter wählen…</option>
+          </select>
+          <button id="btn-admin-employee-new">Neu</button>
+        </div>
+
+        <div id="admin-employee-form" style="display: none;">
+          <input type="hidden" id="admin-employee-id" />
+
+          <h4>Persönlich</h4>
+          <div class="form-row">
+            <input type="text" id="admin-employee-name" placeholder="Name" />
+            <input type="text" id="admin-employee-kuerzel" placeholder="Kürzel" />
+          </div>
+          <div class="form-row">
+            <input type="date" id="admin-employee-geburtsdatum" placeholder="Geburtsdatum" />
+            <input type="text" id="admin-employee-ahv" placeholder="AHV-Nummer" />
+            <input type="text" id="admin-employee-zivilstand" placeholder="Zivilstand" />
+            <input type="number" id="admin-employee-kinder" placeholder="Kinderanzahl" />
+          </div>
+
+          <h4>Kontakt</h4>
+          <div class="form-row">
+            <input type="text" id="admin-employee-adresse" placeholder="Adresse" />
+            <input type="text" id="admin-employee-plz" placeholder="PLZ" />
+            <input type="text" id="admin-employee-ort" placeholder="Ort" />
+          </div>
+          <div class="form-row">
+            <input type="email" id="admin-employee-email" placeholder="E-Mail" />
+            <input type="text" id="admin-employee-telefon" placeholder="Telefon" />
+          </div>
+          <div class="form-row">
+            <input type="text" id="admin-employee-notfallkontakt" placeholder="Notfallkontakt" />
+            <input type="text" id="admin-employee-notfalltelefon" placeholder="Notfalltelefon" />
+          </div>
+
+          <h4>Arbeitsvertrag</h4>
+          <div class="form-row">
+            <input type="date" id="admin-employee-eintritt" placeholder="Eintrittsdatum" />
+            <input type="date" id="admin-employee-austritt" placeholder="Austrittsdatum" />
+          </div>
+          <div class="form-row">
+            <input type="number" step="0.1" id="admin-employee-pensum" placeholder="Pensum [%]" />
+            <input type="number" step="0.1" id="admin-employee-stdwoche" placeholder="Stunden/Woche" />
+          </div>
+          <div class="form-row">
+            <input type="text" id="admin-employee-lohnart" placeholder="Lohnart" />
+            <input type="number" step="0.05" id="admin-employee-lohn" placeholder="Lohn" />
+          </div>
+          <div class="form-row">
+            <label><input type="checkbox" id="admin-employee-dreizehnter" /> 13. Monatslohn</label>
+            <label><input type="checkbox" id="admin-employee-kader" /> Kadervertrag</label>
+          </div>
+
+          <h4>Ferien &amp; Zeit</h4>
+          <div class="form-row">
+            <input type="number" step="0.1" id="admin-employee-ferienanspruch"
+              placeholder="Ferienanspruch [Tage/Jahr]" />
+            <input type="number" step="0.1" id="admin-employee-ferien-guthaben" placeholder="Ferienguthaben [h]" />
+            <input type="number" step="0.1" id="admin-employee-ueberstunden" placeholder="Überstunden-Guthaben [h]" />
+          </div>
+
+          <h4>Versicherungen</h4>
+          <div class="form-row">
+            <input type="date" id="admin-employee-bvg-eintritt" placeholder="BVG-Eintritt" />
+            <label><input type="checkbox" id="admin-employee-bvg-pflichtig" /> BVG-pflichtig</label>
+            <label><input type="checkbox" id="admin-employee-ktg" /> Krankentaggeld versichert</label>
+            <label><input type="checkbox" id="admin-employee-unfallpriv" /> Unfallversicherung privat</label>
+          </div>
+
+          <h4>Bank</h4>
+          <div class="form-row">
+            <input type="text" id="admin-employee-iban" placeholder="IBAN" />
+            <input type="text" id="admin-employee-bank" placeholder="Bank" />
+          </div>
+
+          <h4>Intern</h4>
+          <div class="form-row">
+            <input type="text" id="admin-employee-abteilung" placeholder="Abteilung" />
+            <input type="text" id="admin-employee-rolle" placeholder="Rolle" />
+            <input type="text" id="admin-employee-kostenstelle" placeholder="Kostenstelle" />
+          </div>
+          <div class="form-row">
+            <textarea id="admin-employee-qualifikationen" placeholder="Qualifikationen"></textarea>
+            <textarea id="admin-employee-notizen" placeholder="Interne Notizen"></textarea>
+          </div>
+
+          <h4>Sonstiges &amp; Rechte</h4>
+          <div class="form-row">
+            <input type="number" step="0.1" id="admin-employee-krankentage" placeholder="Krankentage" />
+            <label><input type="checkbox" id="admin-employee-aktiv" checked /> Aktiv</label>
+          </div>
+          <div class="form-row">
+            <label><input type="checkbox" id="admin-employee-is-admin" /> Admin</label>
+            <label><input type="checkbox" id="admin-employee-can-manage" /> Projekte anlegen / verwalten</label>
+            <label><input type="checkbox" id="admin-employee-can-kp" /> Kunden/Projekte sehen</label>
+          </div>
+
+          <div class="form-row">
+            <button id="btn-admin-employee-save">Speichern</button>
+            <button id="btn-admin-employee-new">Neu</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <h3>Tätigkeiten</h3>
+        <div id="admin-activity-list" class="list"></div>
+        <div class="form-row">
+          <input type="text" id="admin-activity-name" placeholder="Neue Tätigkeit" />
+          <button id="btn-admin-activity-add">Hinzufügen</button>
+        </div>
       </div>
     </section>
   </div>

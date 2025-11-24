@@ -21,3 +21,22 @@ JSON Timeapp
   "quelle_system": "app",
   "externe_id": "APP-2025-11-23-1234"
 }
+
+Docker Befehle
+
+docker compose down
+
+Backnd Image löschen
+docker rmi app-backend || true
+
+BuildCache aufräumen
+docker builder prune -af
+
+Docker Builden
+docker compose up --build -d
+
+Fehler suchen
+docker logs stech_backend --tail=50
+
+Datenbank löschen
+sudo rm -rf db

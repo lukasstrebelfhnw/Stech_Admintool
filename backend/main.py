@@ -1,23 +1,31 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date
+from pathlib import Path
+import shutil
 
 from db import SessionLocal, engine, Base
 import models
-import schemas
-from filesystem import create_project_folders  # wie gehabt
+from schemas import (
+    CustomerCreate, CustomerRead,
+    ProjectCreate, ProjectRead,
+    EmployeeCreate, EmployeeRead, EmployeeUpdate,
+    TimeEntryCreate, TimeEntryRead, TimeEntryUpdate,
+)
+from filesystem import create_project_folders
+from crud_timeentries import check_no_overlap
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# CORS-Konfiguration: Frontend darf aufs Backend zugreifen
+# CORS-Konfiguration
 origins = [
-    "http://192.168.178.83:8080",  # dein nginx-Frontend
-    "http://192.168.178.83",       # falls du direkt testest
-    "http://localhost:8080",       # optional für lokalen Test
+    "http://192.168.178.83:8080",
+    "http://192.168.178.83",
+    "http://localhost:8080",
 ]
 
 app.add_middleware(
@@ -42,10 +50,12 @@ def root():
     return {"msg": "STech Backend + PostgreSQL laufen!"}
 
 
-# ---------- Kunden ----------
+# ============================================================
+#  K U N D E N
+# ============================================================
 
-@app.post("/customers/", response_model=schemas.CustomerRead)
-def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_db)):
+@app.post("/customers/", response_model=CustomerRead)
+def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     db_customer = models.Customer(**customer.model_dump())
     db.add(db_customer)
     db.commit()
@@ -53,15 +63,37 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
     return db_customer
 
 
-@app.get("/customers/", response_model=List[schemas.CustomerRead])
+@app.get("/customers/", response_model=List[CustomerRead])
 def list_customers(db: Session = Depends(get_db)):
     return db.query(models.Customer).order_by(models.Customer.id).all()
 
 
-# ---------- Projekte ----------
+@app.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    cust = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not cust:
+        raise HTTPException(status_code=404, detail="Kunde nicht gefunden")
 
-@app.post("/projects/", response_model=schemas.ProjectRead)
-def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
+    has_projects = db.query(models.Project).filter(models.Project.customer_id == customer_id).first()
+    has_times = db.query(models.TimeEntry).filter(models.TimeEntry.customer_id == customer_id).first()
+
+    if has_projects or has_times:
+        raise HTTPException(
+            status_code=400,
+            detail="Kunde hat noch Projekte oder Zeit-Einträge und kann nicht gelöscht werden.",
+        )
+
+    db.delete(cust)
+    db.commit()
+    return {"ok": True}
+
+
+# ============================================================
+#  P R O J E K T E
+# ============================================================
+
+@app.post("/projects/", response_model=ProjectRead)
+def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     # Kunde prüfen
     customer = db.query(models.Customer).filter(
         models.Customer.id == project.customer_id
@@ -69,14 +101,14 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     if customer is None:
         raise HTTPException(status_code=404, detail="Kunde nicht gefunden")
 
-    # Projekt in DB anlegen (Pfad erst mal leer)
+    # Projekt in DB anlegen
     db_project = models.Project(
         customer_id=project.customer_id,
         titel=project.titel,
         beschreibung=project.beschreibung,
         ist_offerte=project.ist_offerte,
         stundensatz=project.stundensatz,
-        status="neu",
+        status=project.status or "Offen",
     )
     db.add(db_project)
     db.commit()
@@ -98,16 +130,52 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     return db_project
 
 
-@app.get("/projects/", response_model=List[schemas.ProjectRead])
+@app.get("/projects/", response_model=List[ProjectRead])
 def list_projects(db: Session = Depends(get_db)):
-    # join, damit customer geladen ist (für customer_firma)
-    projects = db.query(models.Project).join(models.Project.customer).all()
+    # Nur offene Projekte → nur auf diese soll gestempelt werden
+    projects = (
+        db.query(models.Project)
+        .join(models.Project.customer)
+        .filter(models.Project.status == "Offen")
+        .all()
+    )
     return projects
 
-# ---------- Mitarbeiter ----------
 
-@app.post("/employees/", response_model=schemas.EmployeeRead)
-def create_employee(emp: schemas.EmployeeCreate, db: Session = Depends(get_db)):
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: int, db: Session = Depends(get_db)):
+    proj = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Projekt nicht gefunden")
+
+    used = db.query(models.TimeEntry).filter(models.TimeEntry.project_id == project_id).first()
+    if used:
+        raise HTTPException(
+            status_code=400,
+            detail="Projekt hat noch Zeiteinträge und kann nicht gelöscht werden.",
+        )
+
+    # Projektordner auf dem OS löschen (Option A + JA)
+    if proj.projektpfad:
+        try:
+            base_dir = Path("/srv/stech/projects").resolve()
+            p = Path(proj.projektpfad).resolve()
+            if p.exists() and p.is_dir() and base_dir in p.parents:
+                shutil.rmtree(p)
+        except Exception as e:
+            print("Warnung beim Löschen des Projektordners:", e)
+
+    db.delete(proj)
+    db.commit()
+    return {"ok": True}
+
+
+# ============================================================
+#  M I T A R B E I T E R
+# ============================================================
+
+@app.post("/employees/", response_model=EmployeeRead)
+def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
     db_emp = models.Employee(
         name=emp.name,
         kuerzel=emp.kuerzel,
@@ -115,7 +183,6 @@ def create_employee(emp: schemas.EmployeeCreate, db: Session = Depends(get_db)):
         ahv_nummer=emp.ahv_nummer,
         zivilstand=emp.zivilstand,
         kinderanzahl=emp.kinderanzahl,
-
         adresse=emp.adresse,
         plz=emp.plz,
         ort=emp.ort,
@@ -123,7 +190,6 @@ def create_employee(emp: schemas.EmployeeCreate, db: Session = Depends(get_db)):
         telefon=emp.telefon,
         notfallkontakt=emp.notfallkontakt,
         notfalltelefon=emp.notfalltelefon,
-
         eintrittsdatum=emp.eintrittsdatum,
         austrittsdatum=emp.austrittsdatum,
         pensum=emp.pensum,
@@ -132,28 +198,26 @@ def create_employee(emp: schemas.EmployeeCreate, db: Session = Depends(get_db)):
         lohn=emp.lohn,
         dreizehnter=emp.dreizehnter,
         kadervertrag=emp.kadervertrag,
-
         ferienanspruch=emp.ferienanspruch,
         ferien_guthaben_stunden=emp.ferien_guthaben_stunden,
         ueberstunden_guthaben=emp.ueberstunden_guthaben,
-
         bvg_eintritt=emp.bvg_eintritt,
         bvg_pflichtig=emp.bvg_pflichtig,
         krankentaggeld_versichert=emp.krankentaggeld_versichert,
         unfallversicherung_priv=emp.unfallversicherung_priv,
-
         iban=emp.iban,
         bank=emp.bank,
-
         abteilung=emp.abteilung,
         rolle=emp.rolle,
         kostenstelle=emp.kostenstelle,
         qualifikationen=emp.qualifikationen,
         notizen_intern=emp.notizen_intern,
-
         krankentage=emp.krankentage,
         aktiv=emp.aktiv,
         erstellt_von=emp.erstellt_von,
+        is_admin=emp.is_admin,
+        can_manage_projects=emp.can_manage_projects,
+        can_see_customers_projects=emp.can_see_customers_projects,
     )
     db.add(db_emp)
     db.commit()
@@ -161,18 +225,45 @@ def create_employee(emp: schemas.EmployeeCreate, db: Session = Depends(get_db)):
     return db_emp
 
 
-@app.get("/employees/", response_model=List[schemas.EmployeeRead])
+@app.get("/employees/", response_model=List[EmployeeRead])
 def list_employees(db: Session = Depends(get_db)):
     return db.query(models.Employee).all()
 
-# ---------- Time Entries ----------
 
-@app.post("/timeentries/", response_model=schemas.TimeEntryRead)
-def create_time_entry(entry: schemas.TimeEntryCreate, db: Session = Depends(get_db)):
-    # Optional: Validierung, ob Employee existiert
+@app.put("/employees/{emp_id}", response_model=EmployeeRead)
+def update_employee(emp_id: int, emp: EmployeeUpdate, db: Session = Depends(get_db)):
+    db_emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
+    if not db_emp:
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+
+    data = emp.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(db_emp, field, value)
+
+    db.commit()
+    db.refresh(db_emp)
+    return db_emp
+
+
+# ============================================================
+#  Z E I T E I N T R Ä G E
+# ============================================================
+
+@app.post("/timeentries/", response_model=TimeEntryRead)
+def create_time_entry(entry: TimeEntryCreate, db: Session = Depends(get_db)):
+    # Mitarbeiter prüfen
     emp = db.query(models.Employee).filter(models.Employee.id == entry.employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+
+    # Overlap nur prüfen, wenn Ende bereits gesetzt ist
+    if entry.start is not None and entry.ende is not None:
+        check_no_overlap(
+            db=db,
+            employee_id=entry.employee_id,
+            start=entry.start,
+            ende=entry.ende,
+        )
 
     db_entry = models.TimeEntry(
         employee_id=entry.employee_id,
@@ -194,7 +285,7 @@ def create_time_entry(entry: schemas.TimeEntryCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(db_entry)
 
-    return schemas.TimeEntryRead(
+    return TimeEntryRead(
         id=db_entry.id,
         employee_id=db_entry.employee_id,
         customer_id=db_entry.customer_id,
@@ -213,14 +304,15 @@ def create_time_entry(entry: schemas.TimeEntryCreate, db: Session = Depends(get_
         employee_name=db_entry.employee.name if db_entry.employee else None,
     )
 
-@app.get("/timeentries/", response_model=List[schemas.TimeEntryRead])
+
+@app.get("/timeentries/", response_model=List[TimeEntryRead])
 def list_time_entries(
     db: Session = Depends(get_db),
     employee_id: Optional[int] = None,
     customer_id: Optional[int] = None,
     project_id: Optional[int] = None,
-    from_date: Optional[date] = None,
-    to_date: Optional[date] = None,
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = None,
 ):
     q = db.query(models.TimeEntry)
 
@@ -230,16 +322,16 @@ def list_time_entries(
         q = q.filter(models.TimeEntry.customer_id == customer_id)
     if project_id:
         q = q.filter(models.TimeEntry.project_id == project_id)
-    if from_date:
-        q = q.filter(models.TimeEntry.datum >= from_date)
-    if to_date:
-        q = q.filter(models.TimeEntry.datum <= to_date)
+    if from_:
+        q = q.filter(models.TimeEntry.datum >= from_)
+    if to:
+        q = q.filter(models.TimeEntry.datum <= to)
 
     entries = q.all()
-    result = []
+    result: list[TimeEntryRead] = []
     for e in entries:
         result.append(
-            schemas.TimeEntryRead(
+            TimeEntryRead(
                 id=e.id,
                 employee_id=e.employee_id,
                 customer_id=e.customer_id,
@@ -259,3 +351,125 @@ def list_time_entries(
             )
         )
     return result
+
+
+@app.get("/timeentries/running", response_model=Optional[TimeEntryRead])
+def get_running_time_entry(
+    employee_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Offener Live-Stempel-Eintrag für diesen Mitarbeiter:
+    start gesetzt, ende NULL.
+    """
+    e = (
+        db.query(models.TimeEntry)
+        .filter(
+            models.TimeEntry.employee_id == employee_id,
+            models.TimeEntry.ende.is_(None),
+        )
+        .order_by(
+            models.TimeEntry.datum.desc(),
+            models.TimeEntry.start.desc()
+        )
+        .first()
+    )
+    if not e:
+        return None
+
+    return TimeEntryRead(
+        id=e.id,
+        employee_id=e.employee_id,
+        customer_id=e.customer_id,
+        project_id=e.project_id,
+        datum=e.datum,
+        start=e.start,
+        ende=e.ende,
+        pause_min=e.pause_min,
+        dauer_stunden=e.dauer_stunden,
+        taetigkeit=e.taetigkeit,
+        details=e.details,
+        betrag=e.betrag,
+        erstellt_am=e.erstellt_am,
+        projektpfad=e.project.projektpfad if e.project else None,
+        customer_firma=e.customer.firma if e.customer else None,
+        employee_name=e.employee.name if e.employee else None,
+    )
+
+
+@app.put("/timeentries/{entry_id}", response_model=TimeEntryRead)
+def update_time_entry(
+    entry_id: int,
+    entry_update: TimeEntryUpdate,
+    db: Session = Depends(get_db),
+):
+    db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
+
+    # Generisches Update
+    data = entry_update.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(db_entry, field, value)
+
+    # Overlap prüfen, wenn start & ende vorhanden
+    if db_entry.start is not None and db_entry.ende is not None:
+        check_no_overlap(
+            db=db,
+            employee_id=db_entry.employee_id,
+            start=db_entry.start,
+            ende=db_entry.ende,
+            entry_id=db_entry.id,
+        )
+
+    db.commit()
+    db.refresh(db_entry)
+
+    return TimeEntryRead(
+        id=db_entry.id,
+        employee_id=db_entry.employee_id,
+        customer_id=db_entry.customer_id,
+        project_id=db_entry.project_id,
+        datum=db_entry.datum,
+        start=db_entry.start,
+        ende=db_entry.ende,
+        pause_min=db_entry.pause_min,
+        dauer_stunden=db_entry.dauer_stunden,
+        taetigkeit=db_entry.taetigkeit,
+        details=db_entry.details,
+        betrag=db_entry.betrag,
+        erstellt_am=db_entry.erstellt_am,
+        projektpfad=db_entry.project.projektpfad if db_entry.project else None,
+        customer_firma=db_entry.customer.firma if db_entry.customer else None,
+        employee_name=db_entry.employee.name if db_entry.employee else None,
+    )
+
+
+@app.delete("/timeentries/{entry_id}")
+def delete_time_entry(entry_id: int, db: Session = Depends(get_db)):
+    """
+    Zeiteintrag löschen:
+    - DB-Eintrag löschen
+    - falls 'quelle_datei' auf eine Datei unter /srv/stech/projects zeigt → Datei löschen
+    """
+    db_entry = db.query(models.TimeEntry).filter(models.TimeEntry.id == entry_id).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="Zeiteintrag nicht gefunden")
+
+    # Datei löschen (Option A: alles unter /srv/stech/projects ...)
+    if db_entry.quelle_datei:
+        try:
+            base_dir = Path("/srv/stech/projects").resolve()
+            p = Path(db_entry.quelle_datei)
+            # relativ → unter base_dir annehmen
+            if not p.is_absolute():
+                p = base_dir / p
+            p = p.resolve()
+            if p.exists() and p.is_file() and base_dir in p.parents:
+                p.unlink()
+        except Exception as e:
+            print("Warnung beim Löschen der TimeEntry-Datei:", e)
+
+    db.delete(db_entry)
+    db.commit()
+    return {"ok": True}

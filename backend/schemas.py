@@ -2,7 +2,6 @@ from typing import Optional
 from datetime import date, time, datetime
 from pydantic import BaseModel, ConfigDict
 
-
 # ---------- Customer ----------
 
 class CustomerBase(BaseModel):
@@ -34,6 +33,7 @@ class ProjectBase(BaseModel):
     beschreibung: Optional[str] = None
     ist_offerte: bool = False
     stundensatz: Optional[float] = None
+    status: Optional[str] = "Offen"  
 
 
 class ProjectCreate(ProjectBase):
@@ -43,25 +43,26 @@ class ProjectCreate(ProjectBase):
 class ProjectRead(ProjectBase):
     id: int
     projektpfad: Optional[str] = None
-    status: str
     # NEU: Firmenname für Anzeige
     customer_firma: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-
 # ---------- Employee ----------
 
 class EmployeeBase(BaseModel):
-    # alles optional, bis auf name, damit du flexibel Mitarbeiter anlegen kannst
+    # Pflicht
     name: str
+
+    # Persönlich
     kuerzel: Optional[str] = None
     geburtsdatum: Optional[date] = None
     ahv_nummer: Optional[str] = None
     zivilstand: Optional[str] = None
     kinderanzahl: Optional[int] = 0
 
+    # Kontakt
     adresse: Optional[str] = None
     plz: Optional[str] = None
     ort: Optional[str] = None
@@ -70,6 +71,7 @@ class EmployeeBase(BaseModel):
     notfallkontakt: Optional[str] = None
     notfalltelefon: Optional[str] = None
 
+    # Arbeitsvertrag
     eintrittsdatum: Optional[date] = None
     austrittsdatum: Optional[date] = None
     pensum: Optional[float] = 100.0
@@ -83,10 +85,72 @@ class EmployeeBase(BaseModel):
     ferien_guthaben_stunden: Optional[float] = 0.0
     ueberstunden_guthaben: Optional[float] = 0.0
 
+    # Versicherungen
     bvg_eintritt: Optional[date] = None
     bvg_pflichtig: Optional[bool] = False
     krankentaggeld_versichert: Optional[bool] = True
     unfallversicherung_priv: Optional[bool] = False
+
+    # Bank
+    iban: Optional[str] = None
+    bank: Optional[str] = None
+
+    # Intern
+    abteilung: Optional[str] = None
+    rolle: Optional[str] = None
+    kostenstelle: Optional[str] = None
+    qualifikationen: Optional[str] = None
+    notizen_intern: Optional[str] = None
+
+    # Sonstiges
+    krankentage: Optional[float] = 0.0
+    aktiv: Optional[bool] = True
+    erstellt_von: Optional[str] = None
+
+    # Rollen / Rechte
+    is_admin: bool = False
+    can_manage_projects: bool = False
+    can_see_customers_projects: bool = False
+
+
+class EmployeeCreate(EmployeeBase):
+    pass
+
+
+class EmployeeUpdate(BaseModel):
+    # alles optional → für PUT /employees/{id}
+    name: Optional[str] = None
+    kuerzel: Optional[str] = None
+    geburtsdatum: Optional[date] = None
+    ahv_nummer: Optional[str] = None
+    zivilstand: Optional[str] = None
+    kinderanzahl: Optional[int] = None
+
+    adresse: Optional[str] = None
+    plz: Optional[str] = None
+    ort: Optional[str] = None
+    email: Optional[str] = None
+    telefon: Optional[str] = None
+    notfallkontakt: Optional[str] = None
+    notfalltelefon: Optional[str] = None
+
+    eintrittsdatum: Optional[date] = None
+    austrittsdatum: Optional[date] = None
+    pensum: Optional[float] = None
+    stunden_pro_woche: Optional[float] = None
+    lohnart: Optional[str] = None
+    lohn: Optional[float] = None
+    dreizehnter: Optional[bool] = None
+    kadervertrag: Optional[bool] = None
+
+    ferienanspruch: Optional[float] = None
+    ferien_guthaben_stunden: Optional[float] = None
+    ueberstunden_guthaben: Optional[float] = None
+
+    bvg_eintritt: Optional[date] = None
+    bvg_pflichtig: Optional[bool] = None
+    krankentaggeld_versichert: Optional[bool] = None
+    unfallversicherung_priv: Optional[bool] = None
 
     iban: Optional[str] = None
     bank: Optional[str] = None
@@ -97,14 +161,12 @@ class EmployeeBase(BaseModel):
     qualifikationen: Optional[str] = None
     notizen_intern: Optional[str] = None
 
-    krankentage: Optional[float] = 0.0
-    aktiv: Optional[bool] = True
-    erstellt_von: Optional[str] = None
+    krankentage: Optional[float] = None
+    aktiv: Optional[bool] = None
 
-
-class EmployeeCreate(EmployeeBase):
-    # falls du später Pflichtfelder erzwingen willst, kannst du hier enger machen
-    pass
+    is_admin: Optional[bool] = None
+    can_manage_projects: Optional[bool] = None
+    can_see_customers_projects: Optional[bool] = None
 
 
 class EmployeeRead(EmployeeBase):
@@ -126,7 +188,7 @@ class TimeEntryBase(BaseModel):
     start: Optional[time] = None
     ende: Optional[time] = None
     pause_min: Optional[int] = None
-    dauer_stunden: float
+    dauer_stunden: Optional[float] = None
 
     taetigkeit: Optional[str] = None
     details: Optional[str] = None
@@ -147,3 +209,17 @@ class TimeEntryRead(TimeEntryBase):
     erstellt_am: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TimeEntryUpdate(BaseModel):
+    # Für Live-Stop & spätere Bearbeitung
+    datum: Optional[date] = None
+    start: Optional[time] = None
+    ende: Optional[time] = None
+    pause_min: Optional[int] = None
+    dauer_stunden: Optional[float] = None
+    taetigkeit: Optional[str] = None
+    details: Optional[str] = None
+    customer_id: Optional[int] = None
+    project_id: Optional[int] = None
+    betrag: Optional[float] = None

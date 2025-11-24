@@ -114,6 +114,11 @@ class Employee(Base):
     geändert_am = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     erstellt_von = Column(String)
 
+    # Rollen / Rechte
+    is_admin = Column(Boolean, default=False, nullable=False)
+    can_manage_projects = Column(Boolean, default=False, nullable=False)
+    can_see_customers_projects = Column(Boolean, default=False, nullable=False)
+
     # Beziehungen
     time_entries = relationship("TimeEntry", back_populates="employee")
 
@@ -131,7 +136,7 @@ class TimeEntry(Base):
     start = Column(Time, nullable=True)
     ende = Column(Time, nullable=True)
     pause_min = Column(Integer, nullable=True)          # Pause in Minuten
-    dauer_stunden = Column(Float, nullable=False)       # z.B. 9.25
+    dauer_stunden = Column(Float, nullable=True)
 
     taetigkeit = Column(String, nullable=True)
     details = Column(String, nullable=True)
