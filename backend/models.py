@@ -20,6 +20,8 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # Stammdaten (logisch Pflicht, per API geprüft)
     firma = Column(String, nullable=False)
     kontaktperson = Column(String, nullable=True)
     adresse = Column(String, nullable=True)
@@ -28,6 +30,13 @@ class Customer(Base):
     email = Column(String, nullable=True)
     telefon = Column(String, nullable=True)
     stundensatz_standard = Column(Float, nullable=True)
+
+    # Rechnungsadresse (optional – wenn leer, wird aus Stammdaten abgeleitet)
+    rechnung_adresse = Column(String, nullable=True)
+    rechnung_plz = Column(String, nullable=True)
+    rechnung_ort = Column(String, nullable=True)
+    rechnung_email = Column(String, nullable=True)
+
     erstellt_am = Column(DateTime, default=datetime.utcnow)
 
     # Beziehungen
@@ -148,7 +157,6 @@ class TimeEntry(Base):
     quelle_system = Column(String, nullable=True)       # z.B. "csv", "app", "manuell"
 
     # Übermittlung / Sperre
-    # Wenn uebermittelt = True → Eintrag ist "fest" und darf nur noch vom Admin geändert werden.
     uebermittelt = Column(Boolean, default=False, nullable=False)
     uebermittelt_am = Column(DateTime, nullable=True)
 
@@ -158,4 +166,3 @@ class TimeEntry(Base):
     employee = relationship("Employee", back_populates="time_entries")
     customer = relationship("Customer", back_populates="time_entries")
     project = relationship("Project", back_populates="time_entries")
-

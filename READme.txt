@@ -48,3 +48,21 @@ Commit mit Kommentar
 git commit -m "Zeiterfassung,Datenmangement,Admin angepasst_V2"
 Auf GitHub pushen
 git push
+
+OS
+Projekte auf OS löschen
+sudo rm -rf /srv/stech/projects/2025/*
+
+
+BUGS:
+
+Beim alle Zeittrackings sollen weiterlaufen, auch wenn man den Mitarbeiter wechselt. 
+
+TODOS:
+-Im Adminportal soll eine Krank fkt eingebaut werden. dazu muss man den Mitarbeiter anwählen und den Button Krank drücken dann werden jeden Tag die Stunden automatisch mit dem Kunden Intern und Tätigkeit Krank gefüllt, 
+bis der Angestellte das erste mal wieder einstempelt.
+
+-Einfügen von Lieferanten in die Datenbank--> Es muss der Tätigkeitsbereich der Firma angegeben werden. Diese Tätigkeiten helfen dann beim Anfragen von Bauteilen wenn man das Stech Datamanagement dazu nimmt.
+Ebenfalls dienen die Lieferanten als Kontrolle von bezahlten und offenen Rechnungen
+
+-Bei Mitarbeiter anlegen Lonart als Dropdown

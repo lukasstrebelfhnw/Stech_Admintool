@@ -303,20 +303,70 @@
   <div id="tab-kp" class="tab-content active">
     <div class="container">
       <!-- Kunden -->
+      <!-- Kunden -->
       <section class="panel">
         <h2>Kunden</h2>
 
-        <div class="form-row">
-          <input id="customer-firma" placeholder="Firma" />
-          <input id="customer-kontakt" placeholder="Kontaktperson (optional)" />
-          <button id="btn-create-customer">Kunde anlegen</button>
-        </div>
+        <!-- Toolbar oben -->
         <div class="toolbar">
+          <button id="btn-customer-new">Neuer Kunde</button>
           <button id="btn-reload-customers">Neu laden</button>
           <span class="small" id="customer-count"></span>
         </div>
-        <div id="customer-error" class="error"></div>
 
+        <!-- ausrollbare Kunden-Maske -->
+        <div id="customer-form"
+          style="display:none; margin-top: 8px; padding: 8px; border-radius: 6px; background:#020617; border:1px solid #1f2937;">
+          <h3 style="margin-top:0;">Neuen Kunden anlegen</h3>
+
+          <div class="form-row">
+            <input id="customer-firma" placeholder="Firma *" />
+            <input id="customer-kontaktperson" placeholder="Kontaktperson" />
+          </div>
+
+          <h4>Adresse</h4>
+          <div class="form-row">
+            <input id="customer-adresse" placeholder="Adresse *" />
+            <input id="customer-plz" placeholder="PLZ *" />
+            <input id="customer-ort" placeholder="Ort *" />
+          </div>
+
+          <h4>Kontakt</h4>
+          <div class="form-row">
+            <input id="customer-email" type="email" placeholder="E-Mail" />
+            <input id="customer-telefon" placeholder="Telefon" />
+          </div>
+          <div class="small">
+            Mindestens <b>E-Mail</b> oder <b>Telefon</b> muss ausgefüllt sein.
+          </div>
+
+          <h4>Standard-Stundensatz</h4>
+          <div class="form-row">
+            <input id="customer-stundensatz" type="number" step="0.05" placeholder="Stundensatz [CHF/h]" />
+          </div>
+
+          <h4>Rechnungsadresse (optional)</h4>
+          <div class="form-row">
+            <input id="customer-rg-adresse" placeholder="Rechnungsadresse" />
+            <input id="customer-rg-plz" placeholder="Rechnungs-PLZ" />
+            <input id="customer-rg-ort" placeholder="Rechnungs-Ort" />
+          </div>
+          <div class="form-row">
+            <input id="customer-rg-email" type="email" placeholder="Rechnungs-E-Mail" />
+          </div>
+          <div class="small">
+            Wenn nichts angegeben ist, wird für Rechnungen die normale Adresse / E-Mail verwendet.
+          </div>
+
+          <div class="form-row" style="margin-top:8px;">
+            <button id="btn-create-customer">Kunde speichern</button>
+            <button type="button" id="btn-customer-cancel" class="btn-danger">Abbrechen</button>
+          </div>
+
+          <div id="customer-error" class="error"></div>
+        </div>
+
+        <!-- Kundenliste -->
         <div id="customer-list" class="list"></div>
       </section>
 

@@ -84,7 +84,20 @@ def compute_duration(entry: models.TimeEntry) -> None:
 
 @app.post("/customers/", response_model=CustomerRead)
 def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    db_customer = models.Customer(**customer.model_dump())
+    # Pydantic hat Pflichtfelder bereits geprüft (CustomerCreate)
+
+    data = customer.model_dump()
+
+    # Rechnungsadresse/-mail aus Stammdaten ableiten, falls leer
+    if not data.get("rechnung_adresse"):
+        data["rechnung_adresse"] = data.get("adresse")
+        data["rechnung_plz"] = data.get("plz")
+        data["rechnung_ort"] = data.get("ort")
+
+    if not data.get("rechnung_email"):
+        data["rechnung_email"] = data.get("email")
+
+    db_customer = models.Customer(**data)
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)

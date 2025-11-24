@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import date, time, datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 # ============================================================
 #  C U S T O M E R
@@ -16,13 +16,43 @@ class CustomerBase(BaseModel):
     telefon: Optional[str] = None
     stundensatz_standard: Optional[float] = None
 
+    # Rechnungsadresse
+    rechnung_adresse: Optional[str] = None
+    rechnung_plz: Optional[str] = None
+    rechnung_ort: Optional[str] = None
+    rechnung_email: Optional[str] = None
+
 
 class CustomerCreate(CustomerBase):
-    pass
+    """
+    Validierung:
+    - Pflichtfelder: firma, kontaktperson, adresse, plz, ort, stundensatz_standard
+    - Kontakt: mindestens E-Mail ODER Telefon muss gesetzt sein
+    """
+
+    @model_validator(mode="after")
+    def validate_required_fields(self):
+        # Pflichtfelder
+        if not self.firma:
+            raise ValueError("Firma ist ein Pflichtfeld.")
+        if not self.kontaktperson:
+            raise ValueError("Kontaktperson ist ein Pflichtfeld.")
+        if not self.adresse or not self.plz or not self.ort:
+            raise ValueError("Adresse, PLZ und Ort sind Pflichtfelder.")
+        if self.stundensatz_standard is None:
+            raise ValueError("Standard-Stundensatz ist ein Pflichtfeld.")
+
+        # Kontakt: E-Mail ODER Telefon
+        if not self.email and not self.telefon:
+            raise ValueError("Mindestens E-Mail oder Telefon muss angegeben werden.")
+
+        return self
 
 
 class CustomerRead(CustomerBase):
     id: int
+    erstellt_am: datetime
+
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -1,6 +1,19 @@
 // Basis-URL fürs Backend dynamisch aus der aktuellen Origin ableiten
-const API_BASE = window.location.origin.replace(":8080", ":8000");
+const origin = window.location.origin;
+let API_BASE;
 
+if (origin.includes(":8080")) {
+    // klassischer Fall: Frontend auf 8080, Backend auf 8000
+    API_BASE = origin.replace(":8080", ":8000");
+} else if (origin.includes(":80")) {
+    // falls du mal explizit Port 80 drin hast
+    API_BASE = origin.replace(":80", ":8000");
+} else {
+    // z.B. Reverse-Proxy, origin = "http://192.168.178.83"
+    API_BASE = origin + ":8000";
+}
+
+console.log("DEBUG API_BASE =", API_BASE);
 let PROJECTS_CACHE = [];
 let CURRENT_USER = {
     id: 1, // ← muss zu deinem Employee passen
@@ -187,20 +200,74 @@ async function createCustomer() {
         if (errEl) errEl.textContent = "Keine Berechtigung, Kunden anzulegen.";
         return;
     }
-    const firmaEl = document.getElementById("customer-firma");
-    const kontaktEl = document.getElementById("customer-kontakt");
+
     const errEl = document.getElementById("customer-error");
-    if (!firmaEl || !kontaktEl || !errEl) return;
+    if (errEl) errEl.textContent = "";
 
-    errEl.textContent = "";
+    const firmaEl = document.getElementById("customer-firma");
+    const kontaktEl = document.getElementById("customer-kontaktperson");
+    const adrEl = document.getElementById("customer-adresse");
+    const plzEl = document.getElementById("customer-plz");
+    const ortEl = document.getElementById("customer-ort");
+    const emailEl = document.getElementById("customer-email");
+    const telEl = document.getElementById("customer-telefon");
+    const stdEl = document.getElementById("customer-stundensatz");
 
-    const firma = firmaEl.value.trim();
-    const kontakt = kontaktEl.value.trim();
+    const rgAdrEl = document.getElementById("customer-rg-adresse");
+    const rgPlzEl = document.getElementById("customer-rg-plz");
+    const rgOrtEl = document.getElementById("customer-rg-ort");
+    const rgMailEl = document.getElementById("customer-rg-email");
 
-    if (!firma) {
-        errEl.textContent = "Bitte eine Firma eingeben.";
+    if (!firmaEl || !adrEl || !plzEl || !ortEl || !emailEl || !telEl || !stdEl) {
+        if (errEl) errEl.textContent = "Interner Fehler: Kunden-Formular nicht gefunden.";
         return;
     }
+
+    const firma = firmaEl.value.trim();
+    const kontaktperson = kontaktEl?.value.trim() || null;
+    const adresse = adrEl.value.trim();
+    const plz = plzEl.value.trim();
+    const ort = ortEl.value.trim();
+    const email = emailEl.value.trim();
+    const telefon = telEl.value.trim();
+    const stundensatz_standard_str = stdEl.value.trim();
+
+    const rechnung_adresse = rgAdrEl?.value.trim() || "";
+    const rechnung_plz = rgPlzEl?.value.trim() || "";
+    const rechnung_ort = rgOrtEl?.value.trim() || "";
+    const rechnung_email = rgMailEl?.value.trim() || "";
+
+    // ---- Validierung ----
+
+    if (!firma) {
+        if (errEl) errEl.textContent = "Firma ist Pflicht.";
+        return;
+    }
+    if (!adresse || !plz || !ort) {
+        if (errEl) errEl.textContent = "Adresse, PLZ und Ort sind Pflicht.";
+        return;
+    }
+    if (!email && !telefon) {
+        if (errEl) errEl.textContent = "Bitte mindestens E-Mail oder Telefon angeben.";
+        return;
+    }
+
+    let stundensatz_standard = null;
+    if (stundensatz_standard_str) {
+        const v = parseFloat(stundensatz_standard_str.replace(",", "."));
+        if (!isNaN(v)) {
+            stundensatz_standard = v;
+        } else {
+            if (errEl) errEl.textContent = "Ungültiger Stundensatz.";
+            return;
+        }
+    }
+
+    // Rechnungsadresse fallback auf Standardwerte
+    const rgAdrOut = rechnung_adresse || adresse;
+    const rgPlzOut = rechnung_plz || plz;
+    const rgOrtOut = rechnung_ort || ort;
+    const rgMailOut = rechnung_email || email;
 
     try {
         const resp = await fetch(`${API_BASE}/customers/`, {
@@ -208,20 +275,80 @@ async function createCustomer() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 firma,
-                kontaktperson: kontakt || null,
+                kontaktperson,
+                adresse,
+                plz,
+                ort,
+                email: email || null,
+                telefon: telefon || null,
+                stundensatz_standard,
+                rechnung_adresse: rgAdrOut,
+                rechnung_plz: rgPlzOut,
+                rechnung_ort: rgOrtOut,
+                rechnung_email: rgMailOut,
             }),
         });
         if (!resp.ok) {
             const txt = await resp.text();
             throw new Error(`Status ${resp.status}: ${txt}`);
         }
-        firmaEl.value = "";
-        kontaktEl.value = "";
+
+        // Erfolg → Formular leeren und einklappen
+        resetCustomerFormFields();
+        toggleCustomerForm(false);
         await loadCustomers();
     } catch (err) {
-        errEl.textContent = `Fehler beim Anlegen: ${err}`;
+        if (errEl) errEl.textContent = `Fehler beim Anlegen: ${err}`;
     }
 }
+
+
+
+function showCustomerForm(show) {
+    const form = document.getElementById("customer-form");
+    if (!form) return;
+    form.style.display = show ? "block" : "none";
+}
+
+function toggleCustomerForm(show) {
+    const form = document.getElementById("customer-form");
+    const errEl = document.getElementById("customer-error");
+    if (!form) return;
+
+    let visible = show;
+    if (visible === undefined) {
+        visible = form.style.display === "none" || form.style.display === "";
+    }
+    form.style.display = visible ? "block" : "none";
+
+    if (errEl) errEl.textContent = "";
+
+    // Bei Ausrollen Felder nicht zwangsläufig leeren – nur bei explizitem "Neu"
+}
+
+function resetCustomerFormFields() {
+    const ids = [
+        "customer-firma",
+        "customer-kontaktperson",
+        "customer-adresse",
+        "customer-plz",
+        "customer-ort",
+        "customer-email",
+        "customer-telefon",
+        "customer-stundensatz",
+        "customer-rg-adresse",
+        "customer-rg-plz",
+        "customer-rg-ort",
+        "customer-rg-email",
+    ];
+    ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+    const errEl = document.getElementById("customer-error");
+    if (errEl) errEl.textContent = "";
+}
+
 
 // ============================================================
 //  P R O J E K T E
@@ -425,6 +552,8 @@ async function reloadProjectsForTimeSelect() {
         }
     }
 
+    const lastProjectId = localStorage.getItem("stech_last_project_id") || "";
+
     select.innerHTML = `<option value="">Projekt wählen…</option>`;
     PROJECTS_CACHE.forEach((p) => {
         const opt = document.createElement("option");
@@ -432,7 +561,18 @@ async function reloadProjectsForTimeSelect() {
         opt.textContent = `${p.titel} (#${p.id})`;
         select.appendChild(opt);
     });
+
+    if (lastProjectId && select.querySelector(`option[value="${lastProjectId}"]`)) {
+        select.value = lastProjectId;
+    }
+
+    // bei Änderung speichern
+    select.addEventListener("change", () => {
+        const val = select.value || "";
+        localStorage.setItem("stech_last_project_id", val);
+    });
 }
+
 
 // ============================================================
 //  L I V E - S T E M P E L N
@@ -563,6 +703,13 @@ async function startTimeTracking() {
 
     const activity = actSelect.value || null;
     const comment = commentEl.value || null;
+    // Auswahl merken
+    if (projectId) {
+        localStorage.setItem("stech_last_project_id", String(projectId));
+    }
+    if (activity) {
+        localStorage.setItem("stech_last_activity", activity);
+    }
 
     try {
         const resp = await fetch(`${API_BASE}/timeentries/`, {
@@ -1460,10 +1607,27 @@ function initTabs() {
 document.addEventListener("DOMContentLoaded", () => {
     initTabs();
 
-    // Buttons verbinden
-    document.getElementById("btn-create-customer")?.addEventListener("click", createCustomer);
+    // Kunden
+    document.getElementById("btn-customer-new")?.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        // bei "Neu" immer Felder leeren und Maske ausrollen
+        resetCustomerFormFields();
+        toggleCustomerForm(true);
+    });
+
+    document.getElementById("btn-customer-cancel")?.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        toggleCustomerForm(false);
+    });
+
+    document.getElementById("btn-create-customer")?.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        createCustomer();
+    });
+
     document.getElementById("btn-reload-customers")?.addEventListener("click", loadCustomers);
 
+    // Projekte
     document.getElementById("btn-create-project")?.addEventListener("click", createProject);
     document.getElementById("btn-reload-projects")?.addEventListener("click", loadProjects);
 
@@ -1471,9 +1635,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-time-start")?.addEventListener("click", startTimeTracking);
     document.getElementById("btn-time-pause")?.addEventListener("click", pauseTimeTracking);
     document.getElementById("btn-time-stop")?.addEventListener("click", stopTimeTracking);
-
-    // Offene Einträge übermitteln (Platzhalter)
-    document.getElementById("btn-time-submit-open")?.addEventListener("click", submitOpenEntries);
 
     // Admin
     document.getElementById("btn-admin-employee-save")?.addEventListener("click", saveEmployeeAdmin);
@@ -1493,7 +1654,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Zeit-Auswertung: neu laden bei Modus/Datum-Änderung
+    // Zeit-Auswertung
     document.getElementById("time-view-mode")?.addEventListener("change", loadTimeEntries);
     document.getElementById("time-view-date")?.addEventListener("change", loadTimeEntries);
 
@@ -1504,6 +1665,5 @@ document.addEventListener("DOMContentLoaded", () => {
     setTodayAsDefaultDate();
     loadEmployeesForTime();
 
-    // Admin-Formular standardmässig eingeklappt
     showEmployeeForm(false);
 });
