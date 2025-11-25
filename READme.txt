@@ -65,4 +65,7 @@ bis der Angestellte das erste mal wieder einstempelt.
 -Einfügen von Lieferanten in die Datenbank--> Es muss der Tätigkeitsbereich der Firma angegeben werden. Diese Tätigkeiten helfen dann beim Anfragen von Bauteilen wenn man das Stech Datamanagement dazu nimmt.
 Ebenfalls dienen die Lieferanten als Kontrolle von bezahlten und offenen Rechnungen
 
--Bei Mitarbeiter anlegen Lonart als Dropdown
+-Bei Mitarbeiter anlegen Lohnart als Dropdown
+
+BUGS:
+Beim Stempeln am 25.11 hat das Datum nicht geändert, da Seite nicht neu geladen wurde.. Neu Laden erzwingen
