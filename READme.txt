@@ -68,4 +68,6 @@ Ebenfalls dienen die Lieferanten als Kontrolle von bezahlten und offenen Rechnun
 -Bei Mitarbeiter anlegen Lohnart als Dropdown
 
 BUGS:
-Beim Stempeln am 25.11 hat das Datum nicht geändert, da Seite nicht neu geladen wurde.. Neu Laden erzwingen
+Beim Stempeln am 25.11 hat das Datum nicht geändert, da Seite nicht neu geladen wurde.. 
+Neu Laden erzwingen
+Laufend seit anpassen auf gewählten Mitarbeiter -->Zeiterfassung-->Live-Stempeln
